@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" integrity="sha384-TT1X2kWsQo0svlj6gLvU/TtiMj6Z1HsrdNV0DaQuRJg+9aRM8WnvOqbvL2wYYr3f" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js" integrity="sha384-6/x7Vih5M5Do5/W5n/9gFvf/9/hHl1/S37/LDgFf16VyN1bQaHpfccIVZv4zG2YX" crossorigin=""></script>
+
     <title>My Portfolio</title>
     <style>
       body {
@@ -74,5 +77,23 @@
       <h2>Contact Me</h2>
       <p>You can reach me by email , or follow me on Twitter at </p>
     </section>
+    <section>
+      <div id="mapid"></div>
+    </section>
+
+    <script>
+    var mymap = L.map('mapid').setView([51.505, -0.09], 13);
+  
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+      maxZoom: 18,
+      tileSize: 512,
+      zoomOffset: -1
+    }).addTo(mymap);
+  
+    // add a marker to the map
+    var marker = L.marker([51.5, -0.09]).addTo(mymap);
+    </script>
+
   </body>
 </html>
