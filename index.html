@@ -4,6 +4,16 @@
     <title>Weather Dashboard</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
+        .city-forecast {
+            margin: 20px;
+            text-align: center;
+        }
+
+        .city-header {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
         .forecast-item {
             display: inline-block;
             margin: 10px;
@@ -14,13 +24,7 @@
         .forecast-icon {
             font-size: 36px;
         }
-
-        .city-header {
-            font-size: 24px;
-            margin-top: 20px;
-            text-align: center;
-        }
-
+        
         .forecast-info {
             display: flex;
             flex-direction: column;
@@ -60,14 +64,18 @@
             const forecasts = data.properties.timeseries.slice(0, 7); // Get forecasts for up to 7 days
             const forecastContainer = document.getElementById('forecast-container');
 
+            const cityForecast = document.createElement('div');
+            cityForecast.className = 'city-forecast';
+
             const cityHeader = document.createElement('div');
             cityHeader.className = 'city-header';
             cityHeader.textContent = cityName;
-            forecastContainer.appendChild(cityHeader);
+
+            cityForecast.appendChild(cityHeader);
 
             forecasts.forEach((forecast, index) => {
                 const temperature = forecast.data.instant.details.air_temperature;
-                const weatherDescription = forecast.data.next_1_hours.summary.symbol_code;
+                const weatherDescription = forecast.data.next_6_hours.summary.symbol_code;
                 const iconCode = iconMap[weatherDescription] || 'wb_cloudy'; // Default to cloudy icon
                 const date = forecast.time.split('T')[0]; // Extract date from time string
 
@@ -92,12 +100,15 @@
 
                 forecastItem.appendChild(forecastInfo);
 
-                forecastContainer.appendChild(forecastItem);
+                cityForecast.appendChild(forecastItem);
             });
+
+            forecastContainer.appendChild(cityForecast);
         }
 
         // Automatically call the function when the page loads
         window.onload = function() {
+            getWeather(3.5833, 98.6667, 'Medan'); // Lat and lon for Medan
             getWeather(58.969975, 5.733107, 'Stavanger'); // Lat and lon for Stavanger
             getWeather(-6.2088, 106.8456, 'Jakarta'); // Lat and lon for Jakarta
         }
