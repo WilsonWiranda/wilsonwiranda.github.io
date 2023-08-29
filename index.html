@@ -80,20 +80,17 @@
     <section>
       <div id="mapid"></div>
     </section>
+    <h1>Map Examples</h1>
 
-    <script>
-    var mymap = L.map('mapid').setView([51.505, -0.09], 13);
-  
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
-      maxZoom: 18,
-      tileSize: 512,
-      zoomOffset: -1
-    }).addTo(mymap);
-  
-    // add a marker to the map
-    var marker = L.marker([51.5, -0.09]).addTo(mymap);
-    </script>
+    <h2>Indonesia Map</h2>
+    <div class="map-container">
+        <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d7932485.7359369!2d109.67797479111023!3d-2.526352154981228!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e68ea780a49a9a7%3A0x8dd7fae5e63a8511!2sIndonesia!5e0!3m2!1sen!2sno!4v1630253742200!5m2!1sen!2sno" width="100%" height="100%" frameborder="0" style="border:0;" allowfullscreen="" aria-hidden="false" tabindex="0"></iframe>
+    </div>
+
+    <h2>Norway Map</h2>
+    <div class="map-container">
+        <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d9401859.076384003!2d7.537699870338641!3d60.52613476833153!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x46399b16b0a5f583%3A0x52963a5addd52a99!2sNorway!5e0!3m2!1sen!2sno!4v1630253873302!5m2!1sen!2sno" width="100%" height="100%" frameborder="0" style="border:0;" allowfullscreen="" aria-hidden="false" tabindex="0"></iframe>
+    </div>
 
   </body>
 </html>
