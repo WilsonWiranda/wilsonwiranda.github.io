@@ -39,13 +39,25 @@
                 console.log("Geolocation is not supported by this browser.");
             }
         }
+
+        // Automatically call the functions when the page loads
+        window.onload = function() {
+            getWeather();
+            getStocks();
+            getLocation();
+        }
     </script>
 </head>
 <body>
     <h1>Interactive Dashboard</h1>
     
-    <button onclick="getWeather()">Get Weather</button>
-    <button onclick="getStocks()">Get Stocks</button>
-    <button onclick="getLocation()">Get Location</button>
+    <!-- Weather information will be displayed here -->
+    <div id="weather"></div>
+    
+    <!-- Stock information will be displayed here -->
+    <div id="stocks"></div>
+    
+    <!-- Location will be displayed here -->
+    <div id="location"></div>
 </body>
 </html>
