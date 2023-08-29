@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Interactive Dashboard</title>
+    <script>
+        async function getWeather() {
+            const response = await fetch('https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=YOUR_LATITUDE&lon=YOUR_LONGITUDE', {
+                headers: {
+                    'User-Agent': 'Your-App-Name'
+                }
+            });
+
+            const data = await response.json();
+            console.log(data);
+            // Process and display weather data here
+        }
+
+        async function getStocks() {
+            const response = await fetch('https://www.google.com/finance/quote/STOCK_SYMBOL:STOCK_EXCHANGE?sa=X&ved=0ahUKEwiLvN2U0f_zAhUj6XMBHQDmDmMQ3ecFCAoIDzAM', {
+                headers: {
+                    'User-Agent': 'Your-App-Name'
+                }
+            });
+
+            const data = await response.text();
+            console.log(data);
+            // Process and display stock data here
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    const latitude = position.coords.latitude;
+                    const longitude = position.coords.longitude;
+                    console.log(latitude, longitude);
+                    // Use latitude and longitude to display location using Google Maps
+                });
+            } else {
+                console.log("Geolocation is not supported by this browser.");
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>Interactive Dashboard</h1>
+    
+    <button onclick="getWeather()">Get Weather</button>
+    <button onclick="getStocks()">Get Stocks</button>
+    <button onclick="getLocation()">Get Location</button>
+</body>
+</html>
