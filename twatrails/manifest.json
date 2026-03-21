@@ -1,0 +1,19 @@
+{
+  "name": "TrailMate",
+  "short_name": "TrailMate",
+  "description": "GPX trail tracker with live GPS and Strava comparison",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1923",
+  "theme_color": "#0f1923",
+  "icons": [
+    {
+      "src": "icon/icon.jpg",
+      "sizes": "any",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["navigation", "sports", "travel"]
+}
