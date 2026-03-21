@@ -47,8 +47,9 @@ const $ = id => document.getElementById(id);
 
 // ── Map ──────────────────────────────────────────────────────
 function initMap() {
+  // Default view: GR11 start area — Pyrenees, Zuriza trailhead
   state.map = L.map('map', { zoomControl: true, attributionControl: true })
-    .setView([58.97, 5.73], 11);
+    .setView([42.73, 0.75], 8);
 
   state.layers.topo = L.tileLayer(
     'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
@@ -401,24 +402,37 @@ function setGPSStatus(s) {
 
 // ── Recorder ─────────────────────────────────────────────────
 function initRecorderUI() {
-  $('btnRecStart').addEventListener('click',()=>{
-    if(!state.gpsActive){showToast('Enable GPS first');document.querySelector('[data-tab="routes"]').click();return;}
-    Recorder.start(); $('recReady').classList.add('hidden'); $('recActive').classList.remove('hidden');
-    $('recDone').classList.add('hidden'); $('recIndicator').classList.remove('hidden'); showToast('Recording started');
+  $('btnRecStart').addEventListener('click', async () => {
+    if (!state.gpsActive) { showToast('Enable GPS first'); document.querySelector('[data-tab="routes"]').click(); return; }
+    const gotWakeLock = await Recorder.start();
+    $('recReady').classList.add('hidden');
+    $('recActive').classList.remove('hidden');
+    $('recDone').classList.add('hidden');
+    $('recIndicator').classList.remove('hidden');
+    if (gotWakeLock) {
+      $('recWakeLockStatus').textContent = '🔆 Screen kept on — GPS will stay active';
+      $('recWakeLockStatus').style.color = 'var(--green)';
+    } else {
+      $('recWakeLockStatus').textContent = '⚠ Keep screen on manually — turning it off may pause GPS';
+      $('recWakeLockStatus').style.color = 'var(--yellow)';
+    }
+    showToast('Recording started');
   });
-  $('btnRecStop').addEventListener('click',()=>{
+  $('btnRecStop').addEventListener('click', () => {
     Recorder.stop(); $('recActive').classList.add('hidden'); $('recIndicator').classList.add('hidden');
     renderRecSummary(Recorder.getStats()); $('recDone').classList.remove('hidden'); showToast('Recording stopped');
   });
-  $('btnRecFit').addEventListener('click',()=>Recorder.fitBounds());
-  $('btnRecDownload').addEventListener('click',()=>{if(Recorder.downloadGPX()) showToast('GPX exported ✓');});
-  $('btnRecDiscard').addEventListener('click',()=>{ Recorder.clear(); $('recDone').classList.add('hidden'); $('recReady').classList.remove('hidden'); showToast('Recording discarded'); });
-  Recorder.onUpdate(stats=>{
-    if(!stats) return;
-    const mm=String(Math.floor(stats.elapsed/60)).padStart(1,'0'), ss=String(stats.elapsed%60).padStart(2,'0'), t=`${mm}:${ss}`;
-    $('recDist').textContent=(stats.distance/1000).toFixed(2); $('recTime').textContent=t;
-    $('recSpeed').textContent=stats.avgSpeed.toFixed(1); $('recGain').textContent=Math.round(stats.elevGain);
-    $('recElapsedBadge').textContent=t;
+  $('btnRecFit').addEventListener('click', () => Recorder.fitBounds());
+  $('btnRecDownload').addEventListener('click', () => { if (Recorder.downloadGPX()) showToast('GPX exported ✓'); });
+  $('btnRecDiscard').addEventListener('click', () => { Recorder.clear(); $('recDone').classList.add('hidden'); $('recReady').classList.remove('hidden'); showToast('Recording discarded'); });
+  Recorder.onUpdate(stats => {
+    if (!stats) return;
+    const mm = String(Math.floor(stats.elapsed/60)).padStart(1,'0'), ss = String(stats.elapsed%60).padStart(2,'0'), t = `${mm}:${ss}`;
+    $('recDist').textContent  = (stats.distance/1000).toFixed(2);
+    $('recTime').textContent  = t;
+    $('recSpeed').textContent = stats.avgSpeed.toFixed(1);
+    $('recGain').textContent  = Math.round(stats.elevGain);
+    $('recElapsedBadge').textContent = t;
   });
 }
 
