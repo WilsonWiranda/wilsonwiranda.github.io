@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1923" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="TrailMate" />
+  <meta name="description" content="GPX trail tracker with live GPS and Strava comparison" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <title>TrailMate</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div id="splash" class="splash">
+  <div class="splash-inner">
+    <div class="splash-logo">
+      <svg viewBox="0 0 64 64" fill="none">
+        <path d="M8 48 L20 28 L30 36 L42 18 L56 48 Z" stroke="#4ade80" stroke-width="2.5" fill="none" stroke-linejoin="round"/>
+        <circle cx="32" cy="22" r="4" fill="#f97316" opacity="0.9"/>
+        <circle cx="32" cy="22" r="8" stroke="#f97316" stroke-width="1.5" fill="none" opacity="0.4"/>
+      </svg>
+    </div>
+    <h1 class="splash-title">TrailMate</h1>
+    <p class="splash-sub">GPX · GPS · Strava</p>
+    <button id="splashEnter" class="btn-primary">Open App</button>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+
+  <!-- Topbar with search -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+        <path d="M4 24 L10 14 L15 18 L21 9 L28 24 Z" stroke="#4ade80" stroke-width="2" fill="none" stroke-linejoin="round"/>
+        <circle cx="16" cy="11" r="2.5" fill="#f97316"/>
+      </svg>
+      <!-- Search bar -->
+      <div class="search-wrap" id="searchWrap">
+        <input id="searchInput" class="search-input" type="search" placeholder="Search place…" autocomplete="off" />
+        <div id="searchResults" class="search-results hidden"></div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div id="offRouteAlert" class="off-route-alert hidden" title="You are off route!">⚠ Off Route</div>
+      <div id="recIndicator" class="rec-indicator hidden">
+        <span class="rec-dot"></span>
+        <span id="recElapsedBadge" class="rec-time">0:00</span>
+      </div>
+      <div id="gpsStatus" class="gps-badge gps-off">
+        <span class="gps-dot"></span>
+        <span class="gps-label">GPS</span>
+      </div>
+    </div>
+  </header>
+
+  <div id="map"></div>
+
+  <!-- Elevation strip -->
+  <div id="elevPanel" class="elev-panel hidden">
+    <div class="elev-panel-header">
+      <span class="elev-panel-title">Elevation Profile</span>
+      <span id="elevStats" class="elev-stats"></span>
+      <button id="btnCloseElev" class="elev-close">✕</button>
+    </div>
+    <div class="elev-canvas-wrap"><canvas id="elevCanvas"></canvas></div>
+  </div>
+
+  <!-- Bottom panel -->
+  <div class="bottom-panel" id="bottomPanel">
+    <div class="drag-handle" id="dragHandle"><div class="drag-bar"></div></div>
+
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="routes">Routes</button>
+      <button class="tab-btn" data-tab="pins">Pins</button>
+      <button class="tab-btn" data-tab="record">Record</button>
+      <button class="tab-btn" data-tab="strava">Strava</button>
+      <button class="tab-btn" data-tab="compare">Compare</button>
+      <button class="tab-btn" data-tab="stats">Stats</button>
+    </div>
+
+    <!-- ROUTES -->
+    <div class="tab-pane active" id="tab-routes">
+      <div class="section-header">
+        <span class="section-label">Pre-loaded Trails</span>
+        <label class="upload-btn-small" for="gpxUpload">+ Upload GPX</label>
+        <input type="file" id="gpxUpload" accept=".gpx" hidden />
+      </div>
+      <div id="preloadedList" class="preloaded-list"></div>
+      <div id="activeRoutesSection" class="hidden">
+        <div class="section-label" style="margin-top:10px">Active on Map</div>
+        <div id="routeList" class="route-list"></div>
+      </div>
+      <button id="btnGPS" class="btn-gps-track">📍 Track My Position</button>
+    </div>
+
+    <!-- PINS / WAYPOINTS -->
+    <div class="tab-pane" id="tab-pins">
+      <div class="section-header">
+        <span class="section-label">Waypoints</span>
+        <button id="btnAddPin" class="upload-btn-small">📌 Drop Pin</button>
+      </div>
+      <div id="pinModeNote" class="pin-mode-note hidden">Tap anywhere on the map to place a pin</div>
+      <div id="routeWaypointsSection" class="hidden">
+        <div class="section-label">Route Waypoints</div>
+        <div id="routeWaypointList" class="waypoint-list"></div>
+      </div>
+      <div id="customPinsSection">
+        <div id="customPinList" class="waypoint-list"></div>
+        <div id="noPinsMsg" class="empty-state" style="padding:16px 0">
+          <div class="empty-icon">📍</div>
+          <p>Tap <strong>Drop Pin</strong> then tap the map to add waypoints.</p>
+        </div>
+      </div>
+      <div id="pinExportRow" class="hidden" style="margin-top:8px">
+        <button id="btnExportPins" class="btn-ghost" style="width:100%">⬇ Export pins as GPX</button>
+      </div>
+    </div>
+
+    <!-- RECORD -->
+    <div class="tab-pane" id="tab-record">
+      <div id="recReady">
+        <div class="rec-status-row">
+          <div class="rec-status-icon">⏺</div>
+          <div>
+            <div class="rec-status-title">Record a Track</div>
+            <div class="rec-status-sub">Saves your path as a GPX file. Enable GPS first.</div>
+          </div>
+        </div>
+        <button id="btnRecStart" class="btn-rec-start">Start Recording</button>
+      </div>
+      <div id="recActive" class="hidden">
+        <div class="rec-live-grid">
+          <div class="rec-live-stat"><div class="rec-live-val" id="recDist">0.00</div><div class="rec-live-lbl">km</div></div>
+          <div class="rec-live-stat"><div class="rec-live-val" id="recTime">0:00</div><div class="rec-live-lbl">elapsed</div></div>
+          <div class="rec-live-stat"><div class="rec-live-val" id="recSpeed">0.0</div><div class="rec-live-lbl">km/h avg</div></div>
+          <div class="rec-live-stat"><div class="rec-live-val" id="recGain">0</div><div class="rec-live-lbl">m gain</div></div>
+        </div>
+        <div class="rec-action-row">
+          <button id="btnRecStop" class="btn-rec-stop">⏹ Stop</button>
+          <button id="btnRecFit" class="btn-ghost">🎯 Fit</button>
+        </div>
+      </div>
+      <div id="recDone" class="hidden">
+        <div class="rec-done-header">Track recorded ✓</div>
+        <div id="recSummary" class="rec-summary-grid"></div>
+        <div class="rec-action-row" style="margin-top:10px">
+          <button id="btnRecDownload" class="btn-primary">⬇ Export GPX</button>
+          <button id="btnRecDiscard" class="btn-ghost danger">Discard</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STRAVA -->
+    <div class="tab-pane" id="tab-strava">
+      <div class="strava-header">
+        <svg viewBox="0 0 40 40" fill="none" class="strava-icon">
+          <path d="M16 5 L24 22 L20 22 L28 35" stroke="#FC4C02" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        <div style="flex:1">
+          <div class="strava-title">Strava</div>
+          <div class="strava-sub" id="stravaAuthStatus">Not connected</div>
+        </div>
+        <img id="stravaAvatar" class="strava-avatar hidden" src="" alt="" />
+      </div>
+      <div id="stravaConnect">
+        <p class="strava-connect-desc">Connect Strava to browse your real activities and overlay them on the topo map.</p>
+        <button id="btnStravaLogin" class="btn-strava">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/></svg>
+          Connect with Strava
+        </button>
+        <details class="strava-config-details">
+          <summary>⚙️ API Configuration</summary>
+          <div class="config-fields">
+            <div class="config-note">Create an app at <strong>strava.com/settings/api</strong>. Set "Authorization Callback Domain" to your deployed hostname.</div>
+            <label class="config-label">Client ID<input id="stravaClientId" type="text" placeholder="123456" class="config-input" /></label>
+            <label class="config-label">Client Secret<input id="stravaClientSecret" type="password" placeholder="••••••••" class="config-input" /></label>
+            <label class="config-label">Redirect URI<input id="stravaRedirectUri" type="text" placeholder="https://yourapp.netlify.app/index.html" class="config-input" /></label>
+            <button id="btnSaveStravaConfig" class="btn-ghost" style="margin-top:8px;width:100%">Save &amp; Connect</button>
+          </div>
+        </details>
+      </div>
+      <div id="stravaConnected" class="hidden">
+        <div class="panel-row" style="margin-bottom:6px">
+          <button id="btnStravaRefresh" class="btn-ghost">↻ Refresh</button>
+          <button id="btnStravaLogout" class="btn-ghost danger">Disconnect</button>
+        </div>
+        <div id="activityList" class="activity-list"></div>
+      </div>
+      <div id="stravaOverlayInfo" class="strava-overlay-info hidden">
+        <div class="section-label" style="margin-top:10px">Loaded on map</div>
+        <div class="info-row"><span class="info-label">Activity</span><span id="stravaName" class="info-val ellipsis">—</span></div>
+        <div class="info-row"><span class="info-label">Distance</span><span id="stravaDist" class="info-val">—</span></div>
+        <div class="info-row"><span class="info-label">Elev ↑</span><span id="stravaElev" class="info-val">—</span></div>
+        <div class="info-row"><span class="info-label">Time</span><span id="stravaTime" class="info-val">—</span></div>
+        <button id="btnClearStrava" class="btn-ghost danger" style="margin-top:8px;width:100%">✕ Remove overlay</button>
+      </div>
+    </div>
+
+    <!-- COMPARE -->
+    <div class="tab-pane" id="tab-compare">
+      <div id="compareEmpty" class="empty-state">
+        <div class="empty-icon">⛰</div>
+        <p>Load a <strong>GPX route</strong> and a <strong>Strava activity</strong> to compare them.</p>
+      </div>
+      <div id="comparePanel" class="hidden">
+        <div class="compare-grid">
+          <div class="compare-col">
+            <div class="compare-col-label"><span class="dot dot-gpx"></span> GPX Route</div>
+            <div class="info-row"><span class="info-label">Distance</span><span id="cmpGpxDist" class="info-val">—</span></div>
+            <div class="info-row"><span class="info-label">Elev ↑</span><span id="cmpGpxElev" class="info-val">—</span></div>
+            <div class="info-row"><span class="info-label">Points</span><span id="cmpGpxPts" class="info-val">—</span></div>
+          </div>
+          <div class="compare-col">
+            <div class="compare-col-label"><span class="dot dot-strava"></span> Strava</div>
+            <div class="info-row"><span class="info-label">Distance</span><span id="cmpStravaDist" class="info-val">—</span></div>
+            <div class="info-row"><span class="info-label">Elev ↑</span><span id="cmpStravaElev" class="info-val">—</span></div>
+            <div class="info-row"><span class="info-label">Points</span><span id="cmpStravaPts" class="info-val">—</span></div>
+          </div>
+        </div>
+        <div class="diff-row"><span class="diff-label">Δ Distance</span><span id="diffDist" class="diff-val">—</span></div>
+        <div class="diff-row"><span class="diff-label">Δ Elevation</span><span id="diffElev" class="diff-val">—</span></div>
+        <button id="btnFitBoth" class="btn-primary" style="margin-top:10px;width:100%">Fit both on map</button>
+      </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="tab-pane" id="tab-stats">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Speed</div><div class="stat-val" id="statSpeed">—</div><div class="stat-unit">km/h</div></div>
+        <div class="stat-card"><div class="stat-label">Altitude</div><div class="stat-val" id="statAlt">—</div><div class="stat-unit">m asl</div></div>
+        <div class="stat-card"><div class="stat-label">Accuracy</div><div class="stat-val" id="statAcc">—</div><div class="stat-unit">m</div></div>
+        <div class="stat-card"><div class="stat-label">Off Route</div><div class="stat-val" id="statOffRoute">—</div><div class="stat-unit">m</div></div>
+      </div>
+      <div class="coords-row"><span class="info-label">Position</span><span id="statCoords" class="mono">—</span></div>
+      <div class="coords-row"><span class="info-label">Heading / Fixes</span><span id="statHeadFixes" class="mono">—</span></div>
+    </div>
+
+  </div><!-- /bottom-panel -->
+
+  <!-- FABs -->
+  <div class="fab-group" id="fabGroup">
+    <button id="btnCenter" class="fab fab-center hidden" title="Center on position">◎</button>
+    <button id="btnElev"   class="fab fab-elev"          title="Elevation profile">📈</button>
+    <button id="btnLayer"  class="fab"                   title="Cycle map layer">🗻</button>
+  </div>
+
+</div><!-- /app -->
+
+<div id="toast" class="toast"></div>
+
+<script src="js/routes.js"></script>
+<script src="js/strava.js"></script>
+<script src="js/elevation.js"></script>
+<script src="js/recorder.js"></script>
+<script src="js/waypoints.js"></script>
+<script src="js/geocoder.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
