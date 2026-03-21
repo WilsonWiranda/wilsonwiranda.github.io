@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f1923" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="TrailMate" />
+  <meta name="apple-mobile-web-app-title" content="P-11.50" />
   <meta name="description" content="GPX trail tracker with live GPS and Strava comparison" />
   <link rel="manifest" href="manifest.json" />
   <!-- Icon: replace icon/icon.jpg with your uploaded file -->
@@ -25,7 +25,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-  <title>TrailMate</title>
+  <title>P-11.50</title>
 
   <style>
 /* ============================================================
@@ -266,6 +266,17 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .toast{position:fixed;left:50%;transform:translateX(-50%) translateY(8px);background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 16px;font-size:.8rem;opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;white-space:nowrap;z-index:9000}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+/* ── Countdown ── */
+.countdown-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.2);border-radius:16px;padding:16px 28px}
+.countdown-label{font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--green);opacity:.8}
+.countdown-grid{display:flex;align-items:center;gap:4px}
+.cd-unit{display:flex;flex-direction:column;align-items:center;min-width:52px}
+.cd-val{font-family:var(--mono);font-size:2rem;font-weight:500;color:#fff;line-height:1;letter-spacing:.04em}
+.cd-lbl{font-family:var(--mono);font-size:.6rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text2);margin-top:3px}
+.cd-sep{font-family:var(--mono);font-size:1.6rem;color:var(--green);opacity:.6;line-height:1;padding-bottom:12px;align-self:flex-start;margin-top:4px}
+.countdown-date{font-family:var(--mono);font-size:.68rem;color:var(--text2);letter-spacing:.1em}
+.cd-done{font-family:var(--mono);font-size:1rem;color:var(--green);text-align:center;padding:4px 0}
+
 /* GPS marker */
 .user-marker{width:20px;height:20px;border-radius:50%;background:var(--orange);border:3px solid #fff;box-shadow:0 0 0 3px rgba(249,115,22,.3),0 2px 6px rgba(0,0,0,.5)}
 
@@ -327,10 +338,26 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <div id="splash" class="splash">
   <div class="splash-inner">
     <div class="splash-logo">
-      <img src="icon/icon.jpg" alt="TrailMate" />
+      <img src="icon/icon.jpg" alt="P-11.50" />
     </div>
-    <h1 class="splash-title">TrailMate</h1>
+    <h1 class="splash-title">P-11.50</h1>
     <p class="splash-sub">GPX · GPS · Strava</p>
+
+    <!-- Countdown -->
+    <div class="countdown-wrap">
+      <div class="countdown-label">Start in</div>
+      <div class="countdown-grid">
+        <div class="cd-unit"><span class="cd-val" id="cdDays">--</span><span class="cd-lbl">days</span></div>
+        <div class="cd-sep">:</div>
+        <div class="cd-unit"><span class="cd-val" id="cdHours">--</span><span class="cd-lbl">hrs</span></div>
+        <div class="cd-sep">:</div>
+        <div class="cd-unit"><span class="cd-val" id="cdMins">--</span><span class="cd-lbl">min</span></div>
+        <div class="cd-sep">:</div>
+        <div class="cd-unit"><span class="cd-val" id="cdSecs">--</span><span class="cd-lbl">sec</span></div>
+      </div>
+      <div class="countdown-date">9 May 2026 · 09:00</div>
+    </div>
+
     <button id="splashEnter" class="btn-primary">Open App</button>
   </div>
 </div>
@@ -606,5 +633,45 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <script src="js/geocoder.js"></script>
 <script src="js/livetrack.js"></script>
 <script src="js/app.js"></script>
+
+<script>
+/* ── Splash countdown to 9 May 2026 09:00 local time ── */
+(function() {
+  // Target: 9 May 2026 at 09:00 in the user's local timezone
+  const TARGET = new Date(2026, 4, 9, 9, 0, 0); // month is 0-indexed: 4 = May
+
+  const dEl = document.getElementById('cdDays');
+  const hEl = document.getElementById('cdHours');
+  const mEl = document.getElementById('cdMins');
+  const sEl = document.getElementById('cdSecs');
+  const wrap = document.querySelector('.countdown-wrap');
+
+  function pad(n) { return String(Math.max(0, n)).padStart(2, '0'); }
+
+  function tick() {
+    const diff = TARGET - Date.now();
+
+    if (diff <= 0) {
+      // Countdown finished — we've started!
+      wrap.innerHTML = '<div class="cd-done">🏔 The adventure has begun!</div>';
+      return;
+    }
+
+    const totalSec = Math.floor(diff / 1000);
+    const days  = Math.floor(totalSec / 86400);
+    const hours = Math.floor((totalSec % 86400) / 3600);
+    const mins  = Math.floor((totalSec % 3600) / 60);
+    const secs  = totalSec % 60;
+
+    dEl.textContent = pad(days);
+    hEl.textContent = pad(hours);
+    mEl.textContent = pad(mins);
+    sEl.textContent = pad(secs);
+  }
+
+  tick(); // run immediately so there's no blank flash
+  setInterval(tick, 1000);
+})();
+</script>
 </body>
 </html>
