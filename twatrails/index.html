@@ -21,6 +21,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
 
+  <!-- Firebase Realtime DB (live tracking) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
   <title>TrailMate</title>
 
   <style>
@@ -265,11 +269,51 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 /* GPS marker */
 .user-marker{width:20px;height:20px;border-radius:50%;background:var(--orange);border:3px solid #fff;box-shadow:0 0 0 3px rgba(249,115,22,.3),0 2px 6px rgba(0,0,0,.5)}
 
-/* Recording — screen-off warning + wake lock status */
-.rec-screen-warning{display:flex;align-items:flex-start;gap:8px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:8px;padding:9px 11px;font-size:.75rem;color:var(--text2);line-height:1.5;margin-bottom:10px}
-.rec-warn-icon{flex-shrink:0;font-size:1rem}
-.rec-screen-warning strong{color:var(--text)}
-.rec-wakelock-status{font-family:var(--mono);font-size:.72rem;margin-bottom:10px;padding:6px 10px;background:var(--bg3);border-radius:6px;transition:color .3s}
+/* Recording — platform note + gap segment badge */
+.rec-platform-note{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;flex-direction:column;gap:7px}
+.rec-note-row{display:flex;align-items:flex-start;gap:8px;font-size:.75rem;color:var(--text2);line-height:1.5}
+.rec-note-icon{flex-shrink:0;font-size:.9rem}
+.rec-note-row strong{color:var(--text)}
+.rec-segments-badge{font-family:var(--mono);font-size:.7rem;color:var(--yellow);background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);border-radius:6px;padding:5px 10px;margin-bottom:8px;text-align:center}
+
+/* ── Live Tracking ── */
+.tab-live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle;animation:blink .9s step-end infinite}
+.live-hero{text-align:center;padding:12px 0 16px}
+.live-hero-icon{font-size:2rem;margin-bottom:6px}
+.live-hero-title{font-size:1rem;font-weight:700;margin-bottom:4px}
+.live-hero-sub{font-size:.78rem;color:var(--text2);line-height:1.5}
+.live-config-details{border:1px solid var(--border);border-radius:var(--radius);margin-top:10px}
+.live-config-details summary{padding:9px 12px;cursor:pointer;font-size:.78rem;color:var(--text2);list-style:none}
+.live-config-details[open] summary{border-bottom:1px solid var(--border)}
+.live-section{margin-bottom:12px}
+.live-divider{height:1px;background:var(--border);margin:14px 0}
+.live-hiker-card,.live-viewer-card{background:var(--bg3);border-radius:var(--radius);padding:12px;border:1px solid var(--border)}
+.live-hiker-status{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.live-status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.live-dot-off{background:var(--text3)}
+.live-dot-live{background:var(--green);box-shadow:0 0 0 3px rgba(74,222,128,.25);animation:blink 1.4s ease-in-out infinite}
+.live-dot-stopped{background:var(--yellow)}
+.live-hiker-status-text{font-size:.85rem;font-weight:600}
+.live-hiker-hint{font-size:.73rem;color:var(--text2);margin-bottom:10px;line-height:1.4}
+.btn-live-share{width:100%;background:var(--green);color:#081a0f;border:none;border-radius:var(--radius);padding:11px;font-family:var(--sans);font-weight:700;font-size:.86rem;cursor:pointer;transition:opacity .2s}
+.btn-live-share:active{opacity:.82}
+.btn-live-share.sharing{background:var(--red);color:#fff}
+.live-viewer-empty{text-align:center;padding:14px 0;font-size:.8rem;color:var(--text2)}
+.live-viewer-empty .empty-icon{font-size:1.8rem;margin-bottom:6px}
+.live-last-update-ago{font-size:.68rem;color:var(--text3);font-family:var(--mono)}
+
+/* Hiker dot on map */
+.hiker-dot{position:relative}
+.hiker-dot-inner{width:18px;height:18px;border-radius:50%;background:var(--green);border:3px solid #fff;box-shadow:0 0 0 3px rgba(74,222,128,.3),0 2px 8px rgba(0,0,0,.5)}
+.hiker-dot-pulse{position:absolute;top:-6px;left:-6px;width:30px;height:30px;border-radius:50%;background:rgba(74,222,128,.2);animation:hikerPulse 2s ease-out infinite}
+@keyframes hikerPulse{0%{transform:scale(.7);opacity:.8}100%{transform:scale(1.6);opacity:0}}
+
+/* Live viewer badge in topbar */
+.live-viewer-badge{display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:20px;border:1px solid var(--green);color:var(--green);font-family:var(--mono);font-size:.66rem;font-weight:700;letter-spacing:.06em}
+.live-dot-badge{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink .9s step-end infinite}
+
+/* Live FAB */
+.fab-live{border-color:var(--green)!important;color:var(--green)!important;font-size:.95rem}
 
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -303,6 +347,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       </div>
     </div>
     <div class="topbar-right">
+      <div id="liveViewerBadge" class="live-viewer-badge hidden" title="Live tracking active">
+        <span class="live-dot-badge"></span>LIVE
+      </div>
       <div id="offRouteAlert" class="off-route-alert hidden">⚠ Off Route</div>
       <div id="recIndicator" class="rec-indicator hidden">
         <span class="rec-dot"></span>
@@ -331,6 +378,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
     <div class="tab-nav">
       <button class="tab-btn active" data-tab="routes">Routes</button>
+      <button class="tab-btn" data-tab="live">
+        <span class="tab-live-dot hidden" id="tabLiveDot"></span>Live
+      </button>
       <button class="tab-btn" data-tab="pins">Pins</button>
       <button class="tab-btn" data-tab="record">Record</button>
       <button class="tab-btn" data-tab="strava">Strava</button>
@@ -353,7 +403,74 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <button id="btnGPS" class="btn-gps-track">📍 Track My Position</button>
     </div>
 
-    <!-- PINS -->
+    <!-- LIVE TRACKING -->
+    <div class="tab-pane" id="tab-live">
+
+      <!-- Not configured -->
+      <div id="liveNotConfigured">
+        <div class="live-hero">
+          <div class="live-hero-icon">📡</div>
+          <div class="live-hero-title">Live Tracking</div>
+          <div class="live-hero-sub">Share the hiker's real-time position with everyone watching the app.</div>
+        </div>
+        <details class="live-config-details" id="liveConfigDetails">
+          <summary>⚙️ Firebase Configuration</summary>
+          <div class="config-fields">
+            <div class="gh-notice">
+              <div class="gh-notice-title">🔥 Free Firebase Setup (~3 min)</div>
+              <div class="gh-notice-body">
+                1. Go to <strong>console.firebase.google.com</strong><br/>
+                2. Create project → Add Web app → copy config<br/>
+                3. Enable <strong>Realtime Database</strong> → test mode<br/>
+                4. Paste the values below and save
+              </div>
+            </div>
+            <label class="config-label">API Key<input id="fbApiKey" type="text" placeholder="AIzaSy…" class="config-input" /></label>
+            <label class="config-label">Auth Domain<input id="fbAuthDomain" type="text" placeholder="your-project.firebaseapp.com" class="config-input" /></label>
+            <label class="config-label">Database URL<input id="fbDbUrl" type="url" placeholder="https://your-project-default-rtdb.firebaseio.com" class="config-input" /></label>
+            <label class="config-label">Project ID<input id="fbProjectId" type="text" placeholder="your-project-id" class="config-input" /></label>
+            <button id="btnSaveFbConfig" class="btn-primary" style="margin-top:8px;width:100%">Save &amp; Connect</button>
+          </div>
+        </details>
+      </div>
+
+      <!-- Configured -->
+      <div id="liveConfigured" class="hidden">
+
+        <!-- Hiker mode -->
+        <div class="live-section">
+          <div class="section-label">I am the hiker</div>
+          <div class="live-hiker-card" id="liveHikerCard">
+            <div class="live-hiker-status" id="liveHikerStatus">
+              <span class="live-status-dot live-dot-off"></span>
+              <span id="liveHikerStatusText">Not sharing</span>
+            </div>
+            <div class="live-hiker-hint" id="liveHikerHint">Enable GPS tracking first, then start sharing.</div>
+            <button id="btnLiveShare" class="btn-live-share">📡 Start Sharing Location</button>
+          </div>
+        </div>
+
+        <div class="live-divider"></div>
+
+        <!-- Viewer mode -->
+        <div class="live-section">
+          <div class="section-label">Watch the hiker</div>
+          <div class="live-viewer-card">
+            <div class="live-pos-info" id="livePosInfo">
+              <div class="info-row"><span class="info-label">Status</span><span id="liveStatus" class="info-val">—</span></div>
+              <div class="info-row"><span class="info-label">Last update</span><span id="liveLastUpdate" class="info-val mono">—</span></div>
+              <div class="info-row"><span class="info-label">Altitude</span><span id="liveAlt" class="info-val">—</span></div>
+              <div class="info-row"><span class="info-label">Speed</span><span id="liveSpeed" class="info-val">—</span></div>
+              <div class="info-row"><span class="info-label">Accuracy</span><span id="liveAcc" class="info-val">—</span></div>
+            </div>
+            <button id="btnJumpToHiker" class="btn-ghost" style="width:100%;margin-top:8px" disabled>🎯 Jump to hiker on map</button>
+          </div>
+        </div>
+
+        <button id="btnResetFbConfig" class="btn-ghost danger" style="margin-top:12px;width:100%;font-size:.72rem">Reset Firebase config</button>
+      </div>
+
+    </div><!-- /tab-live -->
     <div class="tab-pane" id="tab-pins">
       <div class="section-header">
         <span class="section-label">Waypoints</span>
@@ -383,23 +500,23 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="rec-status-icon">⏺</div>
           <div>
             <div class="rec-status-title">Record a Track</div>
-            <div class="rec-status-sub">Saves your path as a GPX file. Enable GPS first.</div>
+            <div class="rec-status-sub">Enable GPS tracking first, then start.</div>
           </div>
         </div>
-        <div class="rec-screen-warning">
-          <span class="rec-warn-icon">💡</span>
-          <span>The app will try to <strong>keep your screen on</strong> while recording so GPS doesn't pause. On iOS, keep the app in the foreground.</span>
+        <div class="rec-platform-note">
+          <div class="rec-note-row"><span class="rec-note-icon">🤖</span><span><strong>Android:</strong> GPS records in the background — you can turn the screen off freely.</span></div>
+          <div class="rec-note-row"><span class="rec-note-icon">🍎</span><span><strong>iOS:</strong> Keep the app open and screen on. If the screen turns off, gaps are saved as separate track segments in the GPX.</span></div>
         </div>
         <button id="btnRecStart" class="btn-rec-start">Start Recording</button>
       </div>
       <div id="recActive" class="hidden">
-        <div id="recWakeLockStatus" class="rec-wakelock-status">Starting…</div>
         <div class="rec-live-grid">
           <div class="rec-live-stat"><div class="rec-live-val" id="recDist">0.00</div><div class="rec-live-lbl">km</div></div>
           <div class="rec-live-stat"><div class="rec-live-val" id="recTime">0:00</div><div class="rec-live-lbl">elapsed</div></div>
           <div class="rec-live-stat"><div class="rec-live-val" id="recSpeed">0.0</div><div class="rec-live-lbl">km/h avg</div></div>
           <div class="rec-live-stat"><div class="rec-live-val" id="recGain">0</div><div class="rec-live-lbl">m gain</div></div>
         </div>
+        <div id="recSegments" class="rec-segments-badge" style="display:none"></div>
         <div class="rec-action-row">
           <button id="btnRecStop" class="btn-rec-stop">⏹ Stop</button>
           <button id="btnRecFit" class="btn-ghost">🎯 Fit</button>
@@ -505,6 +622,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   </div><!-- /bottom-panel -->
 
   <div class="fab-group" id="fabGroup">
+    <button id="btnJumpHikerFab" class="fab fab-live hidden" title="Jump to hiker">📡</button>
     <button id="btnCenter" class="fab fab-center hidden" title="Center on position">◎</button>
     <button id="btnElev"   class="fab"                   title="Elevation profile">📈</button>
     <button id="btnLayer"  class="fab"                   title="Cycle map layer">🗻</button>
@@ -520,6 +638,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <script src="js/recorder.js"></script>
 <script src="js/waypoints.js"></script>
 <script src="js/geocoder.js"></script>
+<script src="js/livetrack.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
