@@ -406,68 +406,34 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <!-- LIVE TRACKING -->
     <div class="tab-pane" id="tab-live">
 
-      <!-- Not configured -->
-      <div id="liveNotConfigured">
-        <div class="live-hero">
-          <div class="live-hero-icon">📡</div>
-          <div class="live-hero-title">Live Tracking</div>
-          <div class="live-hero-sub">Share the hiker's real-time position with everyone watching the app.</div>
-        </div>
-        <details class="live-config-details" id="liveConfigDetails">
-          <summary>⚙️ Firebase Configuration</summary>
-          <div class="config-fields">
-            <div class="gh-notice">
-              <div class="gh-notice-title">🔥 Free Firebase Setup (~3 min)</div>
-              <div class="gh-notice-body">
-                1. Go to <strong>console.firebase.google.com</strong><br/>
-                2. Create project → Add Web app → copy config<br/>
-                3. Enable <strong>Realtime Database</strong> → test mode<br/>
-                4. Paste the values below and save
-              </div>
-            </div>
-            <label class="config-label">API Key<input id="fbApiKey" type="text" placeholder="AIzaSy…" class="config-input" /></label>
-            <label class="config-label">Auth Domain<input id="fbAuthDomain" type="text" placeholder="your-project.firebaseapp.com" class="config-input" /></label>
-            <label class="config-label">Database URL<input id="fbDbUrl" type="url" placeholder="https://your-project-default-rtdb.firebaseio.com" class="config-input" /></label>
-            <label class="config-label">Project ID<input id="fbProjectId" type="text" placeholder="your-project-id" class="config-input" /></label>
-            <button id="btnSaveFbConfig" class="btn-primary" style="margin-top:8px;width:100%">Save &amp; Connect</button>
+      <!-- Hiker controls -->
+      <div class="live-section">
+        <div class="section-label">I am the hiker</div>
+        <div class="live-hiker-card" id="liveHikerCard">
+          <div class="live-hiker-status" id="liveHikerStatus">
+            <span class="live-status-dot live-dot-off"></span>
+            <span id="liveHikerStatusText">Not sharing</span>
           </div>
-        </details>
+          <div class="live-hiker-hint" id="liveHikerHint">Enable GPS tracking first, then start sharing.</div>
+          <button id="btnLiveShare" class="btn-live-share">📡 Start Sharing Location</button>
+        </div>
       </div>
 
-      <!-- Configured -->
-      <div id="liveConfigured" class="hidden">
+      <div class="live-divider"></div>
 
-        <!-- Hiker mode -->
-        <div class="live-section">
-          <div class="section-label">I am the hiker</div>
-          <div class="live-hiker-card" id="liveHikerCard">
-            <div class="live-hiker-status" id="liveHikerStatus">
-              <span class="live-status-dot live-dot-off"></span>
-              <span id="liveHikerStatusText">Not sharing</span>
-            </div>
-            <div class="live-hiker-hint" id="liveHikerHint">Enable GPS tracking first, then start sharing.</div>
-            <button id="btnLiveShare" class="btn-live-share">📡 Start Sharing Location</button>
+      <!-- Viewer panel — everyone sees this -->
+      <div class="live-section">
+        <div class="section-label">Hiker position</div>
+        <div class="live-viewer-card">
+          <div id="livePosInfo">
+            <div class="info-row"><span class="info-label">Status</span><span id="liveStatus" class="info-val">—</span></div>
+            <div class="info-row"><span class="info-label">Last update</span><span id="liveLastUpdate" class="info-val mono">—</span></div>
+            <div class="info-row"><span class="info-label">Altitude</span><span id="liveAlt" class="info-val">—</span></div>
+            <div class="info-row"><span class="info-label">Speed</span><span id="liveSpeed" class="info-val">—</span></div>
+            <div class="info-row"><span class="info-label">Accuracy</span><span id="liveAcc" class="info-val">—</span></div>
           </div>
+          <button id="btnJumpToHiker" class="btn-ghost" style="width:100%;margin-top:8px" disabled>🎯 Jump to hiker on map</button>
         </div>
-
-        <div class="live-divider"></div>
-
-        <!-- Viewer mode -->
-        <div class="live-section">
-          <div class="section-label">Watch the hiker</div>
-          <div class="live-viewer-card">
-            <div class="live-pos-info" id="livePosInfo">
-              <div class="info-row"><span class="info-label">Status</span><span id="liveStatus" class="info-val">—</span></div>
-              <div class="info-row"><span class="info-label">Last update</span><span id="liveLastUpdate" class="info-val mono">—</span></div>
-              <div class="info-row"><span class="info-label">Altitude</span><span id="liveAlt" class="info-val">—</span></div>
-              <div class="info-row"><span class="info-label">Speed</span><span id="liveSpeed" class="info-val">—</span></div>
-              <div class="info-row"><span class="info-label">Accuracy</span><span id="liveAcc" class="info-val">—</span></div>
-            </div>
-            <button id="btnJumpToHiker" class="btn-ghost" style="width:100%;margin-top:8px" disabled>🎯 Jump to hiker on map</button>
-          </div>
-        </div>
-
-        <button id="btnResetFbConfig" class="btn-ghost danger" style="margin-top:12px;width:100%;font-size:.72rem">Reset Firebase config</button>
       </div>
 
     </div><!-- /tab-live -->
