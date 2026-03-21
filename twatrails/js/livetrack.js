@@ -1,94 +1,60 @@
 /* ============================================================
    livetrack.js — Live position sharing via Firebase Realtime DB
-
-   Firebase SDK is loaded statically in index.html (v9 compat).
-   This module just uses the global `firebase` object.
-
-   ROLES:
-     Hiker  — pushes GPS every fix while sharing is on
-     Viewer — subscribes; receives real-time position updates
-
-   FIREBASE SETUP (free, ~3 min):
-   1. console.firebase.google.com → New project
-   2. Add Web app → copy the firebaseConfig shown
-   3. Build → Realtime Database → Create database → Test mode
-   4. Paste config into the app's Live tab ⚙️ settings
-
-   DATA PATH: /hiker/position
-   { lat, lon, alt, accuracy, speed, heading, ts, sharing }
-
-   FREE TIER: 1 GB storage, 10 GB/month transfer.
+   Config is hardcoded — auto-connects for all users on load.
    ============================================================ */
 
 'use strict';
 
 const LiveTrack = (() => {
 
-  const SK = {
-    config:  'tm_fb_config',
-    isHiker: 'tm_fb_is_hiker',
+  // ── Hardcoded Firebase config ─────────────────────────────
+  const FIREBASE_CONFIG = {
+    apiKey:            'AIzaSyDFvgSXtvHheMgyTjNR34HGqRJYIGt7Lhw',
+    authDomain:        'twatrails.firebaseapp.com',
+    projectId:         'twatrails',
+    storageBucket:     'twatrails.firebasestorage.app',
+    messagingSenderId: '132893790640',
+    appId:             '1:132893790640:web:f11a84c750a270fa87c675',
+    databaseURL:       'https://twatrails-default-rtdb.europe-west1.firebasedatabase.app/',
   };
 
-  let db        = null;
-  let posRef    = null;
-  let isSharing = false;
+  const SK_HIKER = 'tm_fb_is_hiker';
+
+  let db           = null;
+  let posRef       = null;
+  let isSharing    = false;
   let viewerListener = null;
-  let statusCb  = null;
+  let statusCb     = null;
 
-  // ── Config persistence ─────────────────────────────────────
-  function saveConfig(cfg) {
-    localStorage.setItem(SK.config, JSON.stringify(cfg));
-  }
-
-  function loadConfig() {
-    try {
-      const raw = localStorage.getItem(SK.config);
-      return raw ? JSON.parse(raw) : null;
-    } catch { return null; }
-  }
-
-  function clearConfig() {
-    localStorage.removeItem(SK.config);
-    localStorage.removeItem(SK.isHiker);
-  }
-
-  // ── Hiker flag ────────────────────────────────────────────
-  function setIsHiker(v) { localStorage.setItem(SK.isHiker, v ? '1' : '0'); }
-  function getIsHiker()  { return localStorage.getItem(SK.isHiker) === '1'; }
-
-  // ── Firebase init ─────────────────────────────────────────
-  async function init(config) {
-    // Clean up any existing Firebase app
+  // ── Auto-init on load ─────────────────────────────────────
+  // Called once the Firebase SDK script tags have loaded
+  function init() {
     if (typeof firebase === 'undefined') {
-      throw new Error('Firebase SDK not loaded. Check your internet connection.');
+      console.error('[LiveTrack] Firebase SDK not available');
+      return false;
     }
-
     try {
-      // Delete existing app if present
-      const existing = firebase.apps?.[0];
-      if (existing) await existing.delete();
-    } catch (_) {}
-
-    firebase.initializeApp(config);
-    db     = firebase.database();
-    posRef = db.ref('/hiker/position');
-    return true;
-  }
-
-  async function initFromStorage() {
-    const cfg = loadConfig();
-    if (!cfg) return false;
-    try {
-      await init(cfg);
+      // Avoid duplicate app initialisation on hot reload
+      if (firebase.apps && firebase.apps.length > 0) {
+        firebase.app(); // use existing app
+      } else {
+        firebase.initializeApp(FIREBASE_CONFIG);
+      }
+      db     = firebase.database();
+      posRef = db.ref('/hiker/position');
       return true;
     } catch (e) {
-      console.warn('[LiveTrack] Restore from storage failed:', e.message);
+      console.error('[LiveTrack] Init failed:', e.message);
       return false;
     }
   }
 
-  // ── Hiker: sharing control ─────────────────────────────────
-  async function startSharing() {
+  // ── Hiker flag (persisted so share button state survives reload) ──
+  function setIsHiker(v) { localStorage.setItem(SK_HIKER, v ? '1' : '0'); }
+  function getIsHiker()  { return localStorage.getItem(SK_HIKER) === '1'; }
+
+  // ── Hiker: start / stop sharing ───────────────────────────
+  function startSharing() {
     if (!posRef) return false;
     isSharing = true;
     if (statusCb) statusCb('sharing');
@@ -97,14 +63,13 @@ const LiveTrack = (() => {
 
   async function stopSharing() {
     isSharing = false;
-    // Mark position as "last known" (not live) in the DB
     if (posRef) {
       try { await posRef.update({ sharing: false }); } catch (_) {}
     }
     if (statusCb) statusCb('stopped');
   }
 
-  // Called every GPS fix — only writes if sharing is on
+  // Called on every GPS fix — writes to Firebase only if sharing
   async function pushPosition(pos) {
     if (!posRef || !isSharing) return;
     const { latitude: lat, longitude: lon, altitude, accuracy, speed, heading } = pos.coords;
@@ -112,10 +77,10 @@ const LiveTrack = (() => {
       await posRef.set({
         lat:      parseFloat(lat.toFixed(6)),
         lon:      parseFloat(lon.toFixed(6)),
-        alt:      altitude  != null ? Math.round(altitude)              : null,
+        alt:      altitude  != null ? Math.round(altitude)               : null,
         accuracy: Math.round(accuracy),
         speed:    speed     != null ? parseFloat((speed * 3.6).toFixed(1)) : null,
-        heading:  heading   != null ? Math.round(heading)               : null,
+        heading:  heading   != null ? Math.round(heading)                : null,
         ts:       Date.now(),
         sharing:  true,
       });
@@ -124,13 +89,11 @@ const LiveTrack = (() => {
     }
   }
 
-  // ── Viewer: real-time subscription ───────────────────────
+  // ── Viewer: real-time subscription ────────────────────────
+  // Fires immediately with current value, then on every change (~500ms)
   function subscribeViewer(cb) {
     if (!posRef) return;
-    // 'value' fires immediately with current data, then on every change
-    viewerListener = posRef.on('value', snapshot => {
-      cb(snapshot.val()); // null if no data
-    }, err => {
+    viewerListener = posRef.on('value', snap => cb(snap.val()), err => {
       console.warn('[LiveTrack] Listener error:', err.message);
     });
   }
@@ -142,17 +105,17 @@ const LiveTrack = (() => {
     }
   }
 
-  // ── Misc ──────────────────────────────────────────────────
+  // ── Callbacks / state ─────────────────────────────────────
   function onStatus(cb)   { statusCb = cb; }
   function isReady()      { return !!db; }
   function isSharingNow() { return isSharing; }
 
   return {
-    init, initFromStorage,
-    saveConfig, loadConfig, clearConfig,
+    init,
     setIsHiker, getIsHiker,
     startSharing, stopSharing, pushPosition,
     subscribeViewer, unsubscribeViewer,
     onStatus, isReady, isSharingNow,
   };
+
 })();

@@ -585,57 +585,30 @@ function showToast(msg) {
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 // ════════════════════════════════════════════════════════════
-// LIVE TRACKING — Firebase Realtime DB
+// LIVE TRACKING — Firebase Realtime DB (hardcoded config)
 // ════════════════════════════════════════════════════════════
 
 const liveState = {
-  hikerMarker: null,     // Leaflet marker for the hiker (visible to all)
-  hikerData:   null,     // last position data from Firebase
-  lastSeen:    null,     // timestamp of last received position
-  seenInterval:null,     // interval to update "last seen X min ago"
-  isSharing:   false,
+  hikerMarker:  null,
+  hikerData:    null,
+  seenInterval: null,
+  isSharing:    false,
 };
 
-async function initLiveTrack() {
-  // Try to restore saved Firebase config
-  const ok = await LiveTrack.initFromStorage();
-  if (ok) showLiveConfigured();
-  else     showLiveNotConfigured();
+function initLiveTrack() {
+  // Auto-connect — no config needed
+  const ok = LiveTrack.init();
+  if (!ok) {
+    console.warn('[App] Firebase init failed');
+    return;
+  }
 
-  // Firebase config form
-  $('btnSaveFbConfig').addEventListener('click', async () => {
-    const cfg = {
-      apiKey:      $('fbApiKey').value.trim(),
-      authDomain:  $('fbAuthDomain').value.trim(),
-      databaseURL: $('fbDbUrl').value.trim(),
-      projectId:   $('fbProjectId').value.trim(),
-    };
-    if (!cfg.apiKey || !cfg.databaseURL || !cfg.projectId) {
-      showToast('Fill in all Firebase fields'); return;
-    }
-    try {
-      showToast('Connecting to Firebase…');
-      await LiveTrack.init(cfg);
-      LiveTrack.saveConfig(cfg);
-      showLiveConfigured();
-      showToast('Firebase connected ✓');
-    } catch (e) {
-      showToast(`Firebase error: ${e.message}`);
-    }
-  });
-
-  // Reset config
-  $('btnResetFbConfig').addEventListener('click', () => {
-    LiveTrack.clearConfig();
-    showLiveNotConfigured();
-    showToast('Firebase config cleared');
-  });
-
-  // Share / stop sharing button
+  // Share / stop sharing button (hiker only)
   $('btnLiveShare').addEventListener('click', async () => {
     if (liveState.isSharing) {
       await LiveTrack.stopSharing();
       liveState.isSharing = false;
+      LiveTrack.setIsHiker(false);
       updateHikerControls(false);
       showToast('Location sharing stopped');
     } else {
@@ -644,7 +617,7 @@ async function initLiveTrack() {
         document.querySelector('[data-tab="routes"]').click();
         return;
       }
-      const ok = await LiveTrack.startSharing();
+      const ok = LiveTrack.startSharing();
       if (ok) {
         liveState.isSharing = true;
         LiveTrack.setIsHiker(true);
@@ -654,39 +627,23 @@ async function initLiveTrack() {
     }
   });
 
-  // Jump to hiker button (panel)
-  $('btnJumpToHiker').addEventListener('click', () => {
-    if (liveState.hikerData) {
-      state.map.setView([liveState.hikerData.lat, liveState.hikerData.lon], 15, { animate: true });
-    }
-  });
+  // Jump to hiker buttons
+  $('btnJumpToHiker').addEventListener('click', jumpToHiker);
+  $('btnJumpHikerFab').addEventListener('click', jumpToHiker);
 
-  // Jump to hiker FAB (floating on map)
-  $('btnJumpHikerFab').addEventListener('click', () => {
-    if (liveState.hikerData) {
-      state.map.setView([liveState.hikerData.lat, liveState.hikerData.lon], 15, { animate: true });
-    }
-  });
-
-  // Start viewer subscription for everyone (hiker + viewers all see the dot)
-  if (LiveTrack.isReady()) startViewerSubscription();
-}
-
-function showLiveNotConfigured() {
-  $('liveNotConfigured').classList.remove('hidden');
-  $('liveConfigured').classList.add('hidden');
-}
-
-function showLiveConfigured() {
-  $('liveNotConfigured').classList.add('hidden');
-  $('liveConfigured').classList.remove('hidden');
-
-  // Restore hiker toggle state
-  if (LiveTrack.getIsHiker()) {
-    updateHikerControls(false); // start as not-sharing (need to press button)
-  }
-
+  // Subscribe — all visitors (hiker + viewers) see the live dot
   startViewerSubscription();
+
+  // Restore hiker sharing state if page was reloaded mid-share
+  if (LiveTrack.getIsHiker()) {
+    updateHikerControls(false); // show "ready to share" state, don't auto-resume
+  }
+}
+
+function jumpToHiker() {
+  if (liveState.hikerData) {
+    state.map.setView([liveState.hikerData.lat, liveState.hikerData.lon], 15, { animate: true });
+  }
 }
 
 function updateHikerControls(sharing) {
