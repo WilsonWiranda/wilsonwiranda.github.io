@@ -42,6 +42,7 @@ const $ = id => document.getElementById(id);
     initRecorderUI();
     initWaypointsUI();
     ElevationChart.init($('elevCanvas'));
+    initLiveTrack();
   });
 })();
 
@@ -343,7 +344,11 @@ function startGPS() {
   setGPSStatus('searching');
   $('btnGPS').textContent='⏹ Stop Tracking'; $('btnGPS').classList.add('active');
   $('btnCenter').classList.remove('hidden');
-  state.gpsWatchId = navigator.geolocation.watchPosition(onGPSSuccess, onGPSError, { enableHighAccuracy:true, maximumAge:3000, timeout:15000 });
+  state.gpsWatchId = navigator.geolocation.watchPosition(onGPSSuccess, onGPSError, {
+    enableHighAccuracy: true,  // use GPS chip, not cell/wifi
+    maximumAge:         0,     // never use a cached position
+    timeout:            30000, // wait up to 30s for a fix (important for screen-off wakeup)
+  });
   state.gpsActive = true;
 }
 
@@ -365,6 +370,7 @@ function onGPSSuccess(pos) {
   if (state.userMarker) { state.userMarker.setLatLng([lat,lon]); state.userCircle.setLatLng([lat,lon]).setRadius(accuracy); }
   else { state.userMarker=L.marker([lat,lon],{icon,zIndexOffset:1000}).addTo(state.map).bindPopup('You are here'); state.userCircle=L.circle([lat,lon],{radius:accuracy,color:'#f97316',fillColor:'#f97316',fillOpacity:0.08,weight:1}).addTo(state.map); state.map.setView([lat,lon],15); }
   if (Recorder.getIsRecording()) Recorder.addPoint(pos);
+  LiveTrack.pushPosition(pos); // push to Firebase if sharing is active
 
   let offRouteDist = null;
   if (state.loadedRoutes.length) {
@@ -402,37 +408,51 @@ function setGPSStatus(s) {
 
 // ── Recorder ─────────────────────────────────────────────────
 function initRecorderUI() {
-  $('btnRecStart').addEventListener('click', async () => {
+  $('btnRecStart').addEventListener('click', () => {
     if (!state.gpsActive) { showToast('Enable GPS first'); document.querySelector('[data-tab="routes"]').click(); return; }
-    const gotWakeLock = await Recorder.start();
+    Recorder.start();
     $('recReady').classList.add('hidden');
     $('recActive').classList.remove('hidden');
     $('recDone').classList.add('hidden');
     $('recIndicator').classList.remove('hidden');
-    if (gotWakeLock) {
-      $('recWakeLockStatus').textContent = '🔆 Screen kept on — GPS will stay active';
-      $('recWakeLockStatus').style.color = 'var(--green)';
-    } else {
-      $('recWakeLockStatus').textContent = '⚠ Keep screen on manually — turning it off may pause GPS';
-      $('recWakeLockStatus').style.color = 'var(--yellow)';
-    }
     showToast('Recording started');
   });
   $('btnRecStop').addEventListener('click', () => {
-    Recorder.stop(); $('recActive').classList.add('hidden'); $('recIndicator').classList.add('hidden');
-    renderRecSummary(Recorder.getStats()); $('recDone').classList.remove('hidden'); showToast('Recording stopped');
+    Recorder.stop();
+    $('recActive').classList.add('hidden');
+    $('recIndicator').classList.add('hidden');
+    renderRecSummary(Recorder.getStats());
+    $('recDone').classList.remove('hidden');
+    showToast('Recording stopped');
   });
   $('btnRecFit').addEventListener('click', () => Recorder.fitBounds());
   $('btnRecDownload').addEventListener('click', () => { if (Recorder.downloadGPX()) showToast('GPX exported ✓'); });
-  $('btnRecDiscard').addEventListener('click', () => { Recorder.clear(); $('recDone').classList.add('hidden'); $('recReady').classList.remove('hidden'); showToast('Recording discarded'); });
+  $('btnRecDiscard').addEventListener('click', () => {
+    Recorder.clear();
+    $('recDone').classList.add('hidden');
+    $('recReady').classList.remove('hidden');
+    showToast('Recording discarded');
+  });
   Recorder.onUpdate(stats => {
     if (!stats) return;
-    const mm = String(Math.floor(stats.elapsed/60)).padStart(1,'0'), ss = String(stats.elapsed%60).padStart(2,'0'), t = `${mm}:${ss}`;
-    $('recDist').textContent  = (stats.distance/1000).toFixed(2);
+    const mm = String(Math.floor(stats.elapsed / 60)).padStart(1, '0');
+    const ss = String(stats.elapsed % 60).padStart(2, '0');
+    const t  = `${mm}:${ss}`;
+    $('recDist').textContent  = (stats.distance / 1000).toFixed(2);
     $('recTime').textContent  = t;
     $('recSpeed').textContent = stats.avgSpeed.toFixed(1);
     $('recGain').textContent  = Math.round(stats.elevGain);
     $('recElapsedBadge').textContent = t;
+    // Show segment count if there are gaps (screen was turned off on iOS)
+    const segEl = $('recSegments');
+    if (segEl) {
+      if (stats.segments > 1) {
+        segEl.textContent = `${stats.segments} segments (${stats.segments - 1} gap${stats.segments > 2 ? 's' : ''} detected)`;
+        segEl.style.display = 'block';
+      } else {
+        segEl.style.display = 'none';
+      }
+    }
   });
 }
 
@@ -563,3 +583,259 @@ function showToast(msg) {
 }
 
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+// ════════════════════════════════════════════════════════════
+// LIVE TRACKING — Firebase Realtime DB
+// ════════════════════════════════════════════════════════════
+
+const liveState = {
+  hikerMarker: null,     // Leaflet marker for the hiker (visible to all)
+  hikerData:   null,     // last position data from Firebase
+  lastSeen:    null,     // timestamp of last received position
+  seenInterval:null,     // interval to update "last seen X min ago"
+  isSharing:   false,
+};
+
+async function initLiveTrack() {
+  // Try to restore saved Firebase config
+  const ok = await LiveTrack.initFromStorage();
+  if (ok) showLiveConfigured();
+  else     showLiveNotConfigured();
+
+  // Firebase config form
+  $('btnSaveFbConfig').addEventListener('click', async () => {
+    const cfg = {
+      apiKey:      $('fbApiKey').value.trim(),
+      authDomain:  $('fbAuthDomain').value.trim(),
+      databaseURL: $('fbDbUrl').value.trim(),
+      projectId:   $('fbProjectId').value.trim(),
+    };
+    if (!cfg.apiKey || !cfg.databaseURL || !cfg.projectId) {
+      showToast('Fill in all Firebase fields'); return;
+    }
+    try {
+      showToast('Connecting to Firebase…');
+      await LiveTrack.init(cfg);
+      LiveTrack.saveConfig(cfg);
+      showLiveConfigured();
+      showToast('Firebase connected ✓');
+    } catch (e) {
+      showToast(`Firebase error: ${e.message}`);
+    }
+  });
+
+  // Reset config
+  $('btnResetFbConfig').addEventListener('click', () => {
+    LiveTrack.clearConfig();
+    showLiveNotConfigured();
+    showToast('Firebase config cleared');
+  });
+
+  // Share / stop sharing button
+  $('btnLiveShare').addEventListener('click', async () => {
+    if (liveState.isSharing) {
+      await LiveTrack.stopSharing();
+      liveState.isSharing = false;
+      updateHikerControls(false);
+      showToast('Location sharing stopped');
+    } else {
+      if (!state.gpsActive) {
+        showToast('Enable GPS tracking first');
+        document.querySelector('[data-tab="routes"]').click();
+        return;
+      }
+      const ok = await LiveTrack.startSharing();
+      if (ok) {
+        liveState.isSharing = true;
+        LiveTrack.setIsHiker(true);
+        updateHikerControls(true);
+        showToast('📡 Sharing live location');
+      }
+    }
+  });
+
+  // Jump to hiker button (panel)
+  $('btnJumpToHiker').addEventListener('click', () => {
+    if (liveState.hikerData) {
+      state.map.setView([liveState.hikerData.lat, liveState.hikerData.lon], 15, { animate: true });
+    }
+  });
+
+  // Jump to hiker FAB (floating on map)
+  $('btnJumpHikerFab').addEventListener('click', () => {
+    if (liveState.hikerData) {
+      state.map.setView([liveState.hikerData.lat, liveState.hikerData.lon], 15, { animate: true });
+    }
+  });
+
+  // Start viewer subscription for everyone (hiker + viewers all see the dot)
+  if (LiveTrack.isReady()) startViewerSubscription();
+}
+
+function showLiveNotConfigured() {
+  $('liveNotConfigured').classList.remove('hidden');
+  $('liveConfigured').classList.add('hidden');
+}
+
+function showLiveConfigured() {
+  $('liveNotConfigured').classList.add('hidden');
+  $('liveConfigured').classList.remove('hidden');
+
+  // Restore hiker toggle state
+  if (LiveTrack.getIsHiker()) {
+    updateHikerControls(false); // start as not-sharing (need to press button)
+  }
+
+  startViewerSubscription();
+}
+
+function updateHikerControls(sharing) {
+  const btn     = $('btnLiveShare');
+  const dot     = $('liveHikerStatus').querySelector('.live-status-dot');
+  const txt     = $('liveHikerStatusText');
+  const hint    = $('liveHikerHint');
+  const tabDot  = $('tabLiveDot');
+
+  if (sharing) {
+    btn.textContent = '⏹ Stop Sharing';
+    btn.classList.add('sharing');
+    dot.className = 'live-status-dot live-dot-live';
+    txt.textContent = 'Sharing live — position updating';
+    hint.textContent = 'Your position is visible to everyone watching the app.';
+    tabDot.classList.remove('hidden');
+  } else {
+    btn.textContent = '📡 Start Sharing Location';
+    btn.classList.remove('sharing');
+    dot.className = 'live-status-dot live-dot-off';
+    txt.textContent = 'Not sharing';
+    hint.textContent = 'Enable GPS tracking first, then start sharing.';
+    tabDot.classList.add('hidden');
+  }
+}
+
+function startViewerSubscription() {
+  LiveTrack.subscribeViewer(data => {
+    liveState.hikerData = data;
+    updateViewerUI(data);
+    if (data && data.lat && data.lon) {
+      updateHikerMarker(data);
+    }
+  });
+
+  // Refresh "X min ago" every 30s
+  clearInterval(liveState.seenInterval);
+  liveState.seenInterval = setInterval(() => {
+    if (liveState.hikerData) updateViewerUI(liveState.hikerData);
+  }, 30000);
+}
+
+function updateViewerUI(data) {
+  const statusEl  = $('liveStatus');
+  const updateEl  = $('liveLastUpdate');
+  const altEl     = $('liveAlt');
+  const speedEl   = $('liveSpeed');
+  const accEl     = $('liveAcc');
+  const jumpBtn   = $('btnJumpToHiker');
+
+  if (!data || !data.lat) {
+    statusEl.textContent  = 'No position yet';
+    updateEl.textContent  = '—';
+    altEl.textContent     = '—';
+    speedEl.textContent   = '—';
+    accEl.textContent     = '—';
+    jumpBtn.disabled      = true;
+    $('btnJumpHikerFab').classList.add('hidden');
+    $('liveViewerBadge').classList.add('hidden');
+    return;
+  }
+
+  jumpBtn.disabled = false;
+  $('btnJumpHikerFab').classList.remove('hidden');
+
+  // Show the topbar LIVE badge only when actively sharing
+  if (data.sharing) {
+    $('liveViewerBadge').classList.remove('hidden');
+  } else {
+    $('liveViewerBadge').classList.add('hidden');
+  }
+
+  // Status
+  if (data.sharing) {
+    statusEl.innerHTML = '<span style="color:var(--green)">● Live</span>';
+  } else {
+    statusEl.innerHTML = '<span style="color:var(--yellow)">◎ Last known</span>';
+  }
+
+  // Age of last update
+  if (data.ts) {
+    const ageMs  = Date.now() - data.ts;
+    const ageSec = Math.floor(ageMs / 1000);
+    let ageStr;
+    if (ageSec < 60)         ageStr = `${ageSec}s ago`;
+    else if (ageSec < 3600)  ageStr = `${Math.floor(ageSec/60)}m ago`;
+    else                     ageStr = `${Math.floor(ageSec/3600)}h ago`;
+    updateEl.textContent = ageStr;
+  }
+
+  altEl.textContent   = data.alt    != null ? `${data.alt} m`           : '—';
+  speedEl.textContent = data.speed  != null ? `${data.speed} km/h`      : '—';
+  accEl.textContent   = data.accuracy != null ? `±${data.accuracy} m`   : '—';
+}
+
+function updateHikerMarker(data) {
+  const latlng = [data.lat, data.lon];
+  const isLive = !!data.sharing;
+
+  if (!liveState.hikerMarker) {
+    // Create marker
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="hiker-dot"><div class="hiker-dot-pulse"></div><div class="hiker-dot-inner"></div></div>`,
+      iconSize:   [30, 30],
+      iconAnchor: [15, 15],
+      popupAnchor:[0, -15],
+    });
+    liveState.hikerMarker = L.marker(latlng, { icon, zIndexOffset: 2000 })
+      .addTo(state.map)
+      .bindPopup(() => buildHikerPopup(liveState.hikerData));
+  } else {
+    liveState.hikerMarker.setLatLng(latlng);
+  }
+
+  // Update popup if open
+  if (liveState.hikerMarker.isPopupOpen()) {
+    liveState.hikerMarker.setPopupContent(buildHikerPopup(data));
+  }
+
+  // Dim dot if last-known (not live)
+  const inner = liveState.hikerMarker.getElement()?.querySelector('.hiker-dot-inner');
+  const pulse = liveState.hikerMarker.getElement()?.querySelector('.hiker-dot-pulse');
+  if (inner) inner.style.background = isLive ? 'var(--green)' : 'var(--yellow)';
+  if (pulse) pulse.style.display    = isLive ? '' : 'none';
+}
+
+function buildHikerPopup(data) {
+  if (!data) return 'No data';
+  const ageMs  = data.ts ? Date.now() - data.ts : null;
+  const ageSec = ageMs != null ? Math.floor(ageMs / 1000) : null;
+  const ageStr = ageSec == null ? '' :
+    ageSec < 60 ? `${ageSec}s ago` :
+    ageSec < 3600 ? `${Math.floor(ageSec/60)}m ago` :
+    `${Math.floor(ageSec/3600)}h ago`;
+
+  const statusColor = data.sharing ? 'var(--green)' : 'var(--yellow)';
+  const statusText  = data.sharing ? '● Live'        : '◎ Last known';
+
+  return `
+    <div style="font-family:Syne,sans-serif;min-width:160px">
+      <b style="font-size:.9rem">Hiker Position</b><br/>
+      <span style="color:${statusColor};font-size:.75rem">${statusText}</span>
+      ${ageStr ? `<span style="color:#888;font-size:.72rem"> · ${ageStr}</span>` : ''}
+      <div style="margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#aaa">
+        ${data.lat.toFixed(5)}, ${data.lon.toFixed(5)}<br/>
+        ${data.alt != null ? `Alt: ${data.alt}m` : ''}
+        ${data.speed != null ? ` · ${data.speed} km/h` : ''}
+      </div>
+    </div>`;
+}
+

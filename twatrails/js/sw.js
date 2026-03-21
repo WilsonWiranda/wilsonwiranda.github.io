@@ -20,6 +20,7 @@ const STATIC = [
   './js/recorder.js',
   './js/waypoints.js',
   './js/geocoder.js',
+  './js/livetrack.js',
   './js/app.js',
   './manifest.json',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
@@ -65,7 +66,9 @@ self.addEventListener('fetch', e => {
       url.hostname.includes('workers.dev') ||
       url.hostname === 'nominatim.openstreetmap.org' ||
       url.hostname === 'fonts.googleapis.com' ||
-      url.hostname === 'fonts.gstatic.com') return;
+      url.hostname === 'fonts.gstatic.com' ||
+      url.hostname.includes('firebaseio.com') ||
+      url.hostname === 'www.gstatic.com') return;
 
   // App shell: cache-first
   e.respondWith(caches.match(e.request).then(c => c || fetch(e.request)));
