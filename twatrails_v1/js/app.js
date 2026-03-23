@@ -536,8 +536,19 @@ async function loadStravaActivities() {
       const item=document.createElement('div'); item.className='activity-item';
       const icon=ACTIVITY_ICONS[act.type]||ACTIVITY_ICONS.default;
       const date=new Date(act.start_date_local).toLocaleDateString(undefined,{month:'short',day:'numeric'});
-      item.innerHTML=`<div class="activity-type-icon">${icon}</div><div class="activity-info"><div class="activity-name">${act.name}</div><div class="activity-meta">${date} · ${fmtDist(act.distance)} · ↑${Math.round(act.total_elevation_gain||0)}m · ${fmtTime(act.moving_time)}</div></div>`;
-      item.addEventListener('click',()=>loadActivityOnMap(act,item)); list.appendChild(item);
+      item.innerHTML=`
+        <div class="activity-type-icon">${icon}</div>
+        <div class="activity-info">
+          <div class="activity-name">${act.name}</div>
+          <div class="activity-meta">${date} · ${fmtDist(act.distance)} · ↑${Math.round(act.total_elevation_gain||0)}m · ${fmtTime(act.moving_time)}</div>
+        </div>
+        <button class="activity-load-btn" title="Load on map &amp; share">🗺 Load</button>`;
+      item.querySelector('.activity-load-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        loadActivityOnMap(act, item);
+      });
+      item.addEventListener('click', () => loadActivityOnMap(act, item));
+      list.appendChild(item);
     });
   } catch(e) { list.innerHTML=`<div style="padding:10px;color:var(--red);font-size:.8rem">${e.message}</div>`; if(e.message.includes('session expired')) showStravaDisconnected(); }
 }
@@ -556,6 +567,8 @@ async function loadActivityOnMap(activity, itemEl) {
       state.stravaPolyline.setPopupContent(buildStravaPopup(state.stravaStats));
     });
     state.map.fitBounds(state.stravaPolyline.getBounds(),{padding:[40,40]});
+    // Auto-open popup so Share button is immediately visible
+    setTimeout(() => state.stravaPolyline.openPopup(), 600);
     let elevGain=0; for(let i=1;i<alts.length;i++){const d=alts[i]-alts[i-1];if(d>0)elevGain+=d;}
     state.stravaStats={name:activity.name,distance:activity.distance,elevation:activity.total_elevation_gain||elevGain,movingTime:activity.moving_time,points:latlngs.length,latlngs};
     $('stravaName').textContent=state.stravaStats.name; $('stravaDist').textContent=fmtDist(state.stravaStats.distance);

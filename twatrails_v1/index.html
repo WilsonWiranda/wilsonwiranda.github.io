@@ -220,6 +220,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .activity-item{display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:9px 11px;border:1px solid var(--border);cursor:pointer;transition:border-color .2s,background .2s}
 .activity-item:hover{background:var(--bg4);border-color:var(--border2)}
 .activity-item.active{border-color:var(--strava)}
+.activity-load-btn{flex-shrink:0;background:var(--bg4);border:1px solid var(--border2);border-radius:7px;color:var(--text2);font-family:var(--sans);font-size:.7rem;font-weight:700;padding:5px 9px;cursor:pointer;transition:background .2s,color .2s,border-color .2s;white-space:nowrap}
+.activity-load-btn:hover{background:#0437F2;border-color:#0437F2;color:#fff}
+.activity-item.active .activity-load-btn{background:#0437F2;border-color:#0437F2;color:#fff}
 .activity-type-icon{font-size:1.1rem;flex-shrink:0}
 .activity-info{flex:1;min-width:0}
 .activity-name{font-size:.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

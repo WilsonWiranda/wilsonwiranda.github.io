@@ -198,42 +198,59 @@ const Photos = (() => {
       </div>`;
   }
 
-  // ── Process file ──────────────────────────────────────────
+  // ── Process file ──────────────────────────────────────────────
+  // Two FileReaders: ArrayBuffer for EXIF, DataURL (base64) for thumb.
+  // Base64 thumbnails are portable — they work on any device, including
+  // Firebase observers on other phones/browsers (blob: URLs are local only).
   function processFile(file, note) {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = ev => {
+
+      // Step 1: parse EXIF from ArrayBuffer
+      const exifReader = new FileReader();
+      exifReader.onerror = () => reject(new Error('Could not read file'));
+      exifReader.onload = function(ev) {
         const buffer = ev.target.result;
-
-        // Thumbnail for popup (use object URL from blob)
-        const thumb = URL.createObjectURL(file);
-
-        // Parse EXIF
-        const exif = parseExif(buffer);
+        const exif   = parseExif(buffer);
         if (!exif) {
-          URL.revokeObjectURL(thumb);
           reject(new Error('No GPS location found in photo EXIF data.'));
           return;
         }
 
-        const id    = Date.now() + Math.random();
-        const name  = file.name.replace(/\.[^.]+$/, '');
-        const entry = addPhoto(exif.lat, exif.lon, thumb, name, note, exif.datetime, id);
-        map.setView([exif.lat, exif.lon], 16, { animate: true });
-        resolve(entry);
+        // Step 2: generate base64 thumbnail via canvas resize
+        const thumbReader = new FileReader();
+        thumbReader.onerror = () => reject(new Error('Could not read file for thumbnail'));
+        thumbReader.onload = function(tv) {
+          const img = new Image();
+          img.onerror = () => reject(new Error('Could not decode image'));
+          img.onload = function() {
+            const MAX    = 400;
+            const scale  = Math.min(1, MAX / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width  = Math.round(img.width  * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            const thumb = canvas.toDataURL('image/jpeg', 0.72);
+
+            const id    = Date.now() + Math.random();
+            const name  = file.name.replace(/\.[^.]+$/, '');
+            const entry = addPhoto(exif.lat, exif.lon, thumb, name, note, exif.datetime, id);
+            map.setView([exif.lat, exif.lon], 16, { animate: true });
+            resolve(entry);
+          };
+          img.src = tv.target.result;
+        };
+        thumbReader.readAsDataURL(file);
       };
-      reader.onerror = () => reject(new Error('Could not read file'));
-      reader.readAsArrayBuffer(file);
+      exifReader.readAsArrayBuffer(file);
     });
   }
 
-  // ── Remove ────────────────────────────────────────────────
+    // ── Remove ────────────────────────────────────────────────
   function remove(id) {
     const idx = photos.findIndex(p => p.id === id);
     if (idx === -1) return;
     const p = photos[idx];
     map.removeLayer(p.marker);
-    URL.revokeObjectURL(p.thumb);
     photos.splice(idx, 1);
     if (onChangeCb) onChangeCb([...photos]);
   }
