@@ -22,6 +22,7 @@ const state = {
   gpsFixes: 0,
   lastPos: null,
   offRoute: false,
+  wakeLock: null,         // Screen Wake Lock — keeps screen on while sharing
 };
 
 const $ = id => document.getElementById(id);
@@ -343,17 +344,21 @@ function renderCustomPins(pins) {
 // ── GPS + Off-route ───────────────────────────────────────────
 $('btnGPS').addEventListener('click', () => state.gpsActive ? stopGPS() : startGPS());
 
-function startGPS() {
+async function startGPS() {
   if (!navigator.geolocation) { showToast('Geolocation not supported'); return; }
   setGPSStatus('searching');
   $('btnGPS').textContent='⏹ Stop Tracking'; $('btnGPS').classList.add('active');
   $('btnCenter').classList.remove('hidden');
   state.gpsWatchId = navigator.geolocation.watchPosition(onGPSSuccess, onGPSError, {
-    enableHighAccuracy: true,  // use GPS chip, not cell/wifi
-    maximumAge:         0,     // never use a cached position
-    timeout:            30000, // wait up to 30s for a fix (important for screen-off wakeup)
+    enableHighAccuracy: true,
+    maximumAge:         0,
+    timeout:            30000,
   });
   state.gpsActive = true;
+
+  // Request Wake Lock so screen stays on while GPS is active
+  // This keeps watchPosition firing on both Android and iOS PWA
+  await acquireWakeLock();
 }
 
 function stopGPS() {
@@ -363,6 +368,7 @@ function stopGPS() {
   $('btnGPS').textContent='📍 Track My Position'; $('btnGPS').classList.remove('active');
   $('btnCenter').classList.add('hidden'); $('offRouteAlert').classList.add('hidden');
   if (Recorder.getIsRecording()) Recorder.stop();
+  releaseWakeLock();
   showToast('GPS stopped');
 }
 
@@ -883,6 +889,73 @@ function updateStatsTab() {
   }
 }
 
+
+// ── Wake Lock — keeps screen on while GPS/sharing is active ──────
+// Supported: Chrome Android, Safari iOS 16.4+ PWA
+// Falls back silently on unsupported browsers
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return; // not supported
+  try {
+    state.wakeLock = await navigator.wakeLock.request('screen');
+    state.wakeLock.addEventListener('release', () => {
+      // Wake lock was released (e.g. tab hidden, battery saver)
+      // Re-acquire when page becomes visible again
+      state.wakeLock = null;
+    });
+    console.log('[WakeLock] Screen lock acquired');
+  } catch (e) {
+    console.warn('[WakeLock] Could not acquire:', e.message);
+  }
+}
+
+function releaseWakeLock() {
+  if (state.wakeLock) {
+    state.wakeLock.release();
+    state.wakeLock = null;
+    console.log('[WakeLock] Released');
+  }
+}
+
+// Re-acquire wake lock when page becomes visible again
+// (it's auto-released when screen turns off or tab is hidden)
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    // Re-acquire wake lock if GPS is still active
+    if (state.gpsActive && !state.wakeLock) {
+      await acquireWakeLock();
+    }
+    // Force an immediate GPS re-poll after screen-off gap
+    // This gets a fresh position as soon as user unlocks phone
+    if (state.gpsActive && state.gpsWatchId != null) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          onGPSSuccess(pos);
+          // If sharing live, push the fresh position immediately
+          if (typeof LiveTrack !== 'undefined') LiveTrack.pushPosition(pos);
+        },
+        err => console.warn('[GPS resume]', err.message),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      );
+    }
+  }
+});
+
+// ── Service Worker update check on every page load ───────────────
+// Tells a waiting SW to activate immediately so new deploys
+// take effect without the user needing to clear cache
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // New SW took control — reload to get fresh files
+    window.location.reload();
+  });
+  // Poll for SW updates every 60 seconds while app is open
+  setInterval(() => {
+    navigator.serviceWorker.getRegistration().then(reg => {
+      if (reg) reg.update();
+    });
+  }, 60000);
+}
+
 // ── Toast ─────────────────────────────────────────────────────
 let toastTimer=null;
 function showToast(msg) {
@@ -890,7 +963,23 @@ function showToast(msg) {
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2800);
 }
 
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+// Register service worker (update logic handled above)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    // If there's already a waiting worker, activate it now
+    if (reg.waiting) reg.waiting.postMessage('skipWaiting');
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          // New version ready — activate immediately
+          newWorker.postMessage('skipWaiting');
+        }
+      });
+    });
+  }).catch(() => {});
+}
 
 // ════════════════════════════════════════════════════════════
 // LIVE TRACKING — Firebase Realtime DB (hardcoded config)
