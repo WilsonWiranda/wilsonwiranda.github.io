@@ -634,7 +634,7 @@ function buildStravaPopup(stats, shared) {
     </div>`;
 }
 
-async async function toggleStravaShare() {
+async function toggleStravaShare() {
   // State lives in window._stravaShared — the button is inside a Leaflet
   // popup string, not a real DOM element, so we never use $('btnStravaShare')
   const isShared = !!window._stravaShared;
