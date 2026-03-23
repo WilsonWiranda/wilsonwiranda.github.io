@@ -609,49 +609,67 @@ function fitBothRoutes() {
 // ── Strava share to Firebase ─────────────────────────────────────
 function buildStravaPopup(stats, shared) {
   if (!stats) return '<b style="color:#0437F2">Strava Activity</b>';
-  const isShared = shared !== undefined ? shared : (window._stravaShared || false);
-  const shareLabel  = isShared ? '⏹ Stop Sharing' : '📡 Share with Observers';
-  const shareStyle  = isShared
-    ? 'background:#1a1a2e;color:#0437F2;border:1px solid #0437F2;'
-    : 'background:#0437F2;color:#fff;border:none;';
+  const sharedState = shared !== undefined ? shared : (window._stravaShared || false);
+  const isPending   = sharedState === 'pending';
+  const isShared    = sharedState === true || sharedState === '1';
+  const shareLabel  = isPending ? '⏳ Sharing…'
+                    : isShared  ? '⏹ Stop Sharing'
+                    :             '📡 Share with Observers';
+  const shareStyle  = isPending ? 'background:#243445;color:#6e8399;border:1px solid #243445;cursor:default;'
+                    : isShared  ? 'background:#162030;color:#0437F2;border:1.5px solid #0437F2;'
+                    :             'background:#0437F2;color:#fff;border:none;';
+  const shareDisabled = isPending ? 'disabled' : '';
   return `
     <div style="font-family:Syne,sans-serif;min-width:200px">
       <b style="font-size:.88rem;color:#0437F2">🏃 ${stats.name}</b><br/>
       <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#aaa;margin-top:4px">
         ${fmtDist(stats.distance)} · ↑${Math.round(stats.elevation||0)}m · ${fmtTime(stats.movingTime)}
       </div>
-      <button onclick="toggleStravaShare()"
+      <button onclick="if(!this.disabled)toggleStravaShare()" ${shareDisabled}
         style="margin-top:8px;width:100%;padding:7px 10px;border-radius:7px;
                font-family:Syne,sans-serif;font-weight:700;font-size:.78rem;
-               cursor:pointer;${shareStyle}">
+               cursor:pointer;transition:all .2s;${shareStyle}">
         ${shareLabel}
       </button>
     </div>`;
 }
 
-async function toggleStravaShare() {
-  const btn = $('btnStravaShare');
-  const isShared = btn.dataset.shared === '1';
+async async function toggleStravaShare() {
+  // State lives in window._stravaShared — the button is inside a Leaflet
+  // popup string, not a real DOM element, so we never use $('btnStravaShare')
+  const isShared = !!window._stravaShared;
+
   if (isShared) {
     await LiveTrack.unpublishStrava();
     updateStravaShareBtn(false);
     showToast('Strava route un-shared');
   } else {
-    if (!state.stravaStats?.latlngs) { showToast('No Strava route loaded'); return; }
-    btn.textContent = '⏳ Sharing…'; btn.disabled = true;
+    if (!state.stravaStats || !state.stravaStats.latlngs) {
+      showToast('No Strava route loaded'); return;
+    }
+    // Immediately rebuild popup with loading state
+    window._stravaShared = 'pending';
+    if (state.stravaPolyline && state.stravaPolyline.isPopupOpen()) {
+      state.stravaPolyline.setPopupContent(buildStravaPopup(state.stravaStats, 'pending'));
+    }
     const ok = await LiveTrack.publishStrava(state.stravaStats.latlngs, state.stravaStats);
-    if (ok) { updateStravaShareBtn(true); showToast('📡 Strava route shared with observers'); }
-    else    { updateStravaShareBtn(false); showToast('Share failed — check connection'); }
+    if (ok) {
+      updateStravaShareBtn(true);
+      showToast('📡 Strava route shared with observers');
+    } else {
+      updateStravaShareBtn(false);
+      showToast('Share failed — check Firebase rules');
+    }
   }
 }
 
 function updateStravaShareBtn(shared) {
-  // Update the in-popup share button if the popup is open
+  // Always update global state first so buildStravaPopup reads the right value
+  window._stravaShared = shared;
+  // Rebuild popup content if it's currently open
   if (state.stravaPolyline && state.stravaPolyline.isPopupOpen()) {
     state.stravaPolyline.setPopupContent(buildStravaPopup(state.stravaStats, shared));
   }
-  // Store share state globally so popup rebuild picks it up
-  window._stravaShared = shared;
 }
 
 // ── Observer: receive shared Strava route from Firebase ───────────
