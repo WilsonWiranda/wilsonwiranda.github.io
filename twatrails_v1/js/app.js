@@ -14,7 +14,7 @@ const state = {
   activePreloaded: null,
   stravaPolyline: null,
   stravaStats: null,
-  stravaActivities: [],   // all fetched activities — used by Stats tab
+  stravaActivities: [],   // all fetched — used by Stats tab
   userMarker: null,
   userCircle: null,
   gpsWatchId: null,
@@ -44,6 +44,7 @@ const $ = id => document.getElementById(id);
     initWaypointsUI();
     ElevationChart.init($('elevCanvas'));
     initLiveTrack();
+    initPhotosUI();
   });
 })();
 
@@ -70,6 +71,7 @@ function initMap() {
   Recorder.init(state.map);
   Waypoints.init(state.map);
   Geocoder.init(state.map);
+  Photos.init(state.map);
 }
 
 // ── Drag panel ───────────────────────────────────────────────
@@ -501,8 +503,9 @@ function initStravaUI(callbackResult) {
   });
 
   $('btnStravaRefresh').addEventListener('click', loadStravaActivities);
-  $('btnStravaLogout').addEventListener('click', () => { StravaAuth.logout(); clearStravaOverlay(); showStravaDisconnected(); showToast('Disconnected'); });
-  $('btnClearStrava').addEventListener('click', clearStravaOverlay);
+  $('btnStravaLogout').addEventListener('click', () => { StravaAuth.logout(); clearStravaOverlay(true); showStravaDisconnected(); showToast('Disconnected'); });
+  $('btnClearStrava').addEventListener('click', () => clearStravaOverlay(true));
+  $('btnStravaShare').addEventListener('click', toggleStravaShare);
   $('btnFitBoth').addEventListener('click', fitBothRoutes);
 }
 
@@ -542,23 +545,26 @@ async function loadActivityOnMap(activity, itemEl) {
     if(!streams.latlng?.data?.length){showToast('No GPS data');return;}
     clearStravaOverlay();
     const latlngs=streams.latlng.data, alts=streams.altitude?.data||[];
-    state.stravaPolyline=L.polyline(latlngs,{color:'#FC4C02',weight:4,opacity:0.85,dashArray:'7 4',lineJoin:'round'}).addTo(state.map);
+    state.stravaPolyline=L.polyline(latlngs,{color:'#0437F2',weight:4,opacity:0.88,dashArray:'7 4',lineJoin:'round'}).addTo(state.map);
     state.stravaPolyline.bindPopup(`<b>Strava: ${activity.name}</b><br/>${fmtDist(activity.distance)}`);
     state.map.fitBounds(state.stravaPolyline.getBounds(),{padding:[40,40]});
     let elevGain=0; for(let i=1;i<alts.length;i++){const d=alts[i]-alts[i-1];if(d>0)elevGain+=d;}
-    state.stravaStats={name:activity.name,distance:activity.distance,elevation:activity.total_elevation_gain||elevGain,movingTime:activity.moving_time,points:latlngs.length};
+    state.stravaStats={name:activity.name,distance:activity.distance,elevation:activity.total_elevation_gain||elevGain,movingTime:activity.moving_time,points:latlngs.length,latlngs};
     $('stravaName').textContent=state.stravaStats.name; $('stravaDist').textContent=fmtDist(state.stravaStats.distance);
     $('stravaElev').textContent=`↑${Math.round(state.stravaStats.elevation)} m`; $('stravaTime').textContent=fmtTime(state.stravaStats.movingTime);
     $('stravaOverlayInfo').classList.remove('hidden');
+    updateStravaShareBtn(false);
     if(alts.length){const rawCoords=latlngs.map((ll,i)=>({lat:ll[0],lon:ll[1],ele:alts[i]||0}));ElevationChart.setProfile(ElevationChart.buildProfileFromCoords(rawCoords));$('elevPanel').classList.remove('hidden');$('elevStats').textContent=`↑${Math.round(state.stravaStats.elevation)}m · ${fmtDist(state.stravaStats.distance)}`;state.map.invalidateSize();positionFABs();}
     showToast(`${activity.name} on map`);
   } catch(e){showToast(`Error: ${e.message}`);}
 }
 
-function clearStravaOverlay() {
+function clearStravaOverlay(unpublish=true) {
   if(state.stravaPolyline){state.map.removeLayer(state.stravaPolyline);state.stravaPolyline=null;state.stravaStats=null;}
   $('stravaOverlayInfo').classList.add('hidden');
   document.querySelectorAll('.activity-item').forEach(el=>el.classList.remove('active'));
+  if(unpublish) LiveTrack.unpublishStrava();
+  updateStravaShareBtn(false);
 }
 
 // ── Compare ───────────────────────────────────────────────────
@@ -579,20 +585,151 @@ function fitBothRoutes() {
 }
 
 
-// ── Stats Tab — Strava averages + route completion estimate ──────
-// GR11 start date (matches splash countdown)
-const HIKE_START = new Date(2026, 4, 9, 9, 0, 0); // 9 May 2026 09:00 local
+// ── Strava share to Firebase ─────────────────────────────────────
+async function toggleStravaShare() {
+  const btn = $('btnStravaShare');
+  const isShared = btn.dataset.shared === '1';
+  if (isShared) {
+    await LiveTrack.unpublishStrava();
+    updateStravaShareBtn(false);
+    showToast('Strava route un-shared');
+  } else {
+    if (!state.stravaStats?.latlngs) { showToast('No Strava route loaded'); return; }
+    btn.textContent = '⏳ Sharing…'; btn.disabled = true;
+    const ok = await LiveTrack.publishStrava(state.stravaStats.latlngs, state.stravaStats);
+    if (ok) { updateStravaShareBtn(true); showToast('📡 Strava route shared with observers'); }
+    else    { updateStravaShareBtn(false); showToast('Share failed — check connection'); }
+  }
+}
+
+function updateStravaShareBtn(shared) {
+  const btn = $('btnStravaShare');
+  if (!btn) return;
+  btn.disabled = false;
+  btn.dataset.shared = shared ? '1' : '0';
+  if (shared) {
+    btn.textContent = '⏹ Stop Sharing Route';
+    btn.style.background  = 'var(--bg4)';
+    btn.style.color       = '#0437F2';
+    btn.style.borderColor = '#0437F2';
+  } else {
+    btn.textContent = '📡 Share Route with Observers';
+    btn.style.background  = '';
+    btn.style.color       = '';
+    btn.style.borderColor = '';
+  }
+}
+
+// ── Observer: receive shared Strava route from Firebase ───────────
+const sharedStravaState = { polyline: null };
+
+function startStravaObserver() {
+  LiveTrack.subscribeStrava(data => {
+    if (sharedStravaState.polyline) {
+      state.map.removeLayer(sharedStravaState.polyline);
+      sharedStravaState.polyline = null;
+    }
+    if (!data || !data.latlngs || !data.latlngs.length) return;
+    sharedStravaState.polyline = L.polyline(data.latlngs, {
+      color: '#0437F2', weight: 4, opacity: 0.88, dashArray: '7 4', lineJoin: 'round',
+    }).addTo(state.map);
+    const name = data.name || 'Strava Activity';
+    sharedStravaState.polyline.bindPopup(
+      `<b style="color:#0437F2">📡 Shared: ${name}</b><br/>` +
+      `${fmtDist(data.distance)} · ↑${Math.round(data.elevation||0)}m · ${fmtTime(data.time)}<br/>` +
+      `<small style="color:#888">Shared by hiker via P-11.50</small>`
+    );
+    const tsKey = 'tm_last_strava_ts';
+    const prev = localStorage.getItem(tsKey);
+    if (!prev || prev !== String(data.ts)) {
+      localStorage.setItem(tsKey, String(data.ts));
+      showToast(`📡 Hiker shared: ${name}`);
+    }
+  });
+}
+
+// ── Photos ────────────────────────────────────────────────────────
+function initPhotosUI() {
+  const dropZone  = $('photoDropZone');
+  const input     = $('photoInput');
+  const noteInput = $('photoNoteInput');
+  const noGpsMsg  = $('photoNoGps');
+
+  dropZone.addEventListener('click', () => input.click());
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('drag-over');
+    handlePhotoFiles([...e.dataTransfer.files]);
+  });
+  input.addEventListener('change', e => { handlePhotoFiles([...e.target.files]); e.target.value = ''; });
+
+  $('btnExportPhotoGpx').addEventListener('click', () => {
+    const gpx = Photos.exportGPX();
+    if (!gpx) { showToast('No photos to export'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([gpx], { type: 'application/gpx+xml' }));
+    a.download = 'photos.gpx'; a.click();
+    showToast('Photos exported ✓');
+  });
+
+  Photos.onChange(renderPhotoList);
+
+  async function handlePhotoFiles(files) {
+    noGpsMsg.style.display = 'none';
+    const note = noteInput.value.trim();
+    let successCount = 0, failCount = 0;
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      try { await Photos.processFile(file, note); successCount++; }
+      catch (e) { failCount++; console.warn('[Photos]', e.message); }
+    }
+    if (successCount > 0) { noteInput.value = ''; showToast(`📷 ${successCount} photo${successCount > 1 ? 's' : ''} plotted on map`); }
+    if (failCount > 0)    { noGpsMsg.style.display = 'block'; if (successCount === 0) showToast('No GPS data found in photo(s)'); }
+  }
+}
+
+function renderPhotoList(photos) {
+  const list   = $('photoList');
+  const header = $('photoListHeader');
+  list.innerHTML = '';
+  if (!photos.length) { header.style.display = 'none'; return; }
+  header.style.display = 'flex';
+  photos.slice().reverse().forEach(p => {
+    const el = document.createElement('div'); el.className = 'photo-item';
+    const dtStr = p.datetime ? (() => {
+      try {
+        const [date, time] = p.datetime.split(' ');
+        const [y, mo, d]   = date.split(':');
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return `${parseInt(d)} ${months[parseInt(mo)-1]} ${y} ${time.slice(0,5)}`;
+      } catch(_) { return ''; }
+    })() : '';
+    const coordStr = `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
+    el.innerHTML = `
+      <img class="photo-thumb" src="${p.thumb}" alt="${p.name}" />
+      <div class="photo-item-info">
+        <div class="photo-item-name">${p.name}</div>
+        <div class="photo-item-meta">${dtStr ? dtStr + ' · ' : ''}${coordStr}</div>
+        ${p.note ? `<div class="photo-item-note">${p.note}</div>` : ''}
+      </div>
+      <div class="photo-item-actions">
+        <button title="Jump to on map" onclick="Photos.flyTo(${p.id})">🎯</button>
+        <button class="del-btn" title="Remove" onclick="Photos.remove(${p.id})">✕</button>
+      </div>`;
+    el.addEventListener('click', e => { if (e.target.tagName === 'BUTTON') return; Photos.flyTo(p.id); });
+    list.appendChild(el);
+  });
+}
+
+// ── Stats Tab — Strava averages + route completion estimate ───────
+const HIKE_START = new Date(2026, 4, 9, 9, 0, 0); // 9 May 2026 09:00
 
 function updateStatsTab() {
   const acts  = state.stravaActivities;
   const route = state.loadedRoutes.length ? state.loadedRoutes[0] : null;
 
-  // ── Live GPS block (always shown) ────────────────────────────
-  // Already wired — statSpeed, statAlt, statAcc, statOffRoute etc.
-  // Nothing to change there.
-
-  // ── Strava averages block ─────────────────────────────────────
-  const statsBlock = $('stravaStatsBlock');
+  const statsBlock  = $('stravaStatsBlock');
   const noStravaMsg = $('statsNoStrava');
 
   if (!acts || acts.length === 0) {
@@ -604,88 +741,66 @@ function updateStatsTab() {
   if (statsBlock)  statsBlock.classList.remove('hidden');
   if (noStravaMsg) noStravaMsg.classList.add('hidden');
 
-  // Filter to hikes/walks only for meaningful averages
   const hikes = acts.filter(a => ['Hike','Walk','TrailRun','Run'].includes(a.type));
   const pool  = hikes.length ? hikes : acts;
+  const n     = pool.length;
 
-  const totalDist  = pool.reduce((s,a) => s + (a.distance||0), 0);
-  const totalElev  = pool.reduce((s,a) => s + (a.total_elevation_gain||0), 0);
-  const totalTime  = pool.reduce((s,a) => s + (a.moving_time||0), 0);
-  const n          = pool.length;
+  const totalDist = pool.reduce((s,a) => s + (a.distance||0), 0);
+  const totalElev = pool.reduce((s,a) => s + (a.total_elevation_gain||0), 0);
+  const totalTime = pool.reduce((s,a) => s + (a.moving_time||0), 0);
 
-  const avgDist    = totalDist / n;          // metres
-  const avgElev    = totalElev / n;          // metres
-  const avgTime    = totalTime / n;          // seconds
-  const avgPace    = avgTime > 0 && avgDist > 0 ? (avgTime / 60) / (avgDist / 1000) : 0; // min/km
-  const avgSpeed   = avgDist > 0 && avgTime > 0 ? (avgDist / avgTime) * 3.6 : 0;         // km/h
+  const avgDist  = totalDist / n;
+  const avgElev  = totalElev / n;
+  const avgTime  = totalTime / n;
+  const avgSpeed = avgDist > 0 && avgTime > 0 ? (avgDist / avgTime) * 3.6 : 0;
+  const avgPace  = avgTime > 0 && avgDist > 0 ? (avgTime / 60) / (avgDist / 1000) : 0;
 
-  $('sAvgDist').textContent  = fmtDist(avgDist);
-  $('sAvgElev').textContent  = `↑${Math.round(avgElev)} m`;
-  $('sAvgTime').textContent  = fmtTime(Math.round(avgTime));
-  $('sAvgSpeed').textContent = avgSpeed.toFixed(1);
-  $('sAvgPace').textContent  = avgPace > 0
-    ? `${Math.floor(avgPace)}:${String(Math.round((avgPace % 1) * 60)).padStart(2,'0')} /km`
-    : '—';
+  $('sAvgDist').textContent      = fmtDist(avgDist);
+  $('sAvgElev').textContent      = `↑${Math.round(avgElev)} m`;
+  $('sAvgTime').textContent      = fmtTime(Math.round(avgTime));
+  $('sAvgSpeed').textContent     = avgSpeed.toFixed(1);
+  $('sAvgPace').textContent      = avgPace > 0
+    ? `${Math.floor(avgPace)}:${String(Math.round((avgPace % 1) * 60)).padStart(2,'0')} /km` : '—';
   $('sActivityCount').textContent = `${n} activit${n===1?'y':'ies'} (${pool===hikes?'hike/walk':'all types'})`;
+  $('sTotalDist').textContent    = fmtDist(totalDist);
+  $('sTotalElev').textContent    = `↑${Math.round(totalElev)} m`;
+  $('sTotalTime').textContent    = fmtTime(totalTime);
 
-  // ── Totals ────────────────────────────────────────────────────
-  $('sTotalDist').textContent = fmtDist(totalDist);
-  $('sTotalElev').textContent = `↑${Math.round(totalElev)} m`;
-  $('sTotalTime').textContent = fmtTime(totalTime);
-
-  // ── Completion estimate vs active route ────────────────────────
   const compBlock = $('completionBlock');
   if (!route) { compBlock.classList.add('hidden'); return; }
   compBlock.classList.remove('hidden');
 
-  const routeDist = route.stats.distance;   // metres
-  const routeElev = route.stats.elevation;  // metres
+  const routeDist = route.stats.distance;
+  const routeElev = route.stats.elevation;
+  const pctDist   = Math.min(100, (totalDist / routeDist) * 100);
+  const pctElev   = Math.min(100, (totalElev / routeElev) * 100);
+  const pctBlend  = pctDist * 0.6 + pctElev * 0.4;
 
-  // % complete based on distance covered vs route total
-  const pctDist = Math.min(100, (totalDist / routeDist) * 100);
-  const pctElev = Math.min(100, (totalElev / routeElev) * 100);
-  // Blended completion (60% distance weight, 40% elevation weight)
-  const pctBlend = pctDist * 0.6 + pctElev * 0.4;
-
-  $('compRouteName').textContent = route.name;
-  $('compPctDist').textContent   = pctDist.toFixed(1) + '%';
-  $('compPctElev').textContent   = pctElev.toFixed(1) + '%';
-  $('compPctBlend').textContent  = pctBlend.toFixed(1) + '%';
-
-  // Progress bar
+  $('compRouteName').textContent  = route.name;
+  $('compPctDist').textContent    = pctDist.toFixed(1) + '%';
+  $('compPctElev').textContent    = pctElev.toFixed(1) + '%';
+  $('compPctBlend').textContent   = pctBlend.toFixed(1) + '%';
   const bar = $('compProgressBar');
   if (bar) bar.style.width = Math.min(100, pctBlend).toFixed(1) + '%';
 
-  // ── Expected finish date — from last waypoint's planned date ────
-  const remaining = routeDist - totalDist; // metres still to go
-
-  // Find the last waypoint on the active route that has a date field
-  const wps = route.rawCoords ? (
-    // Pull waypoints from PRELOADED_ROUTES by matching route id
-    (() => {
-      const pr = (typeof PRELOADED_ROUTES !== 'undefined')
-        ? PRELOADED_ROUTES.find(r => r.id === route.id)
-        : null;
-      return pr ? pr.waypoints : [];
-    })()
-  ) : [];
-
+  // ── Finish date from last waypoint with a date field ──────────
+  const wps = (() => {
+    const pr = (typeof PRELOADED_ROUTES !== 'undefined')
+      ? PRELOADED_ROUTES.find(r => r.id === route.id) : null;
+    return pr ? pr.waypoints : [];
+  })();
   const lastWpWithDate = [...wps].reverse().find(w => w.date);
   const plannedFinish  = lastWpWithDate ? new Date(lastWpWithDate.date + 'T12:00:00') : null;
+  const remaining      = routeDist - totalDist;
 
   if (remaining <= 0) {
     $('compFinishEst').textContent    = '🎉 Route complete!';
     $('compFinishDetail').textContent = '';
   } else if (plannedFinish) {
-    const opts = { day: 'numeric', month: 'short', year: 'numeric' };
+    const opts     = { day: 'numeric', month: 'short', year: 'numeric' };
     $('compFinishEst').textContent = plannedFinish.toLocaleDateString(undefined, opts);
-
-    // Days left until planned finish from today
-    const now        = Date.now();
-    const msPerDay   = 86400000;
-    const daysLeft   = Math.max(0, (plannedFinish.getTime() - now) / msPerDay);
-    const remKm      = (remaining / 1000).toFixed(0);
-
+    const daysLeft     = Math.max(0, (plannedFinish.getTime() - Date.now()) / 86400000);
+    const remKm        = (remaining / 1000).toFixed(0);
     if (daysLeft < 1) {
       $('compFinishDetail').textContent = `${remKm} km remaining · finish day reached`;
     } else {
@@ -694,14 +809,10 @@ function updateStatsTab() {
         `${remKm} km left · ${Math.ceil(daysLeft)} days · need ${neededPerDay} km/day`;
     }
   } else if (avgDist > 0) {
-    // Fallback: pace-based estimate (no waypoint dates)
     const daysNeeded = remaining / avgDist;
     const finishDate = new Date(Date.now() + daysNeeded * 86400000);
-    const opts = { day: 'numeric', month: 'short', year: 'numeric' };
-    $('compFinishEst').textContent = finishDate.toLocaleDateString(undefined, opts);
-    const remKm  = (remaining / 1000).toFixed(0);
-    $('compFinishDetail').textContent =
-      `${remKm} km left · ~${daysNeeded.toFixed(1)} days at current avg pace`;
+    $('compFinishEst').textContent    = finishDate.toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' });
+    $('compFinishDetail').textContent = `${(remaining/1000).toFixed(0)} km left · ~${daysNeeded.toFixed(1)} days at avg pace`;
   } else {
     $('compFinishEst').textContent    = '—';
     $('compFinishDetail').textContent = 'Load Strava activities to estimate';
@@ -766,6 +877,8 @@ function initLiveTrack() {
 
   // Subscribe — all visitors (hiker + viewers) see the live dot
   startViewerSubscription();
+  // Subscribe — all visitors see any shared Strava route
+  startStravaObserver();
 
   // Restore hiker sharing state if page was reloaded mid-share
   if (LiveTrack.getIsHiker()) {

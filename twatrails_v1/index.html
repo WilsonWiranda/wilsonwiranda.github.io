@@ -331,6 +331,33 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 ::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
 .hidden{display:none!important}
 
+/* ── Photos tab ── */
+.photo-drop-zone{border:2px dashed var(--border2);border-radius:var(--radius);padding:22px 12px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;background:var(--bg3);margin-bottom:10px}
+.photo-drop-zone:hover,.photo-drop-zone.drag-over{border-color:var(--blue);background:rgba(56,189,248,.07)}
+.photo-drop-icon{font-size:1.8rem;margin-bottom:6px}
+.photo-drop-label{font-size:.8rem;color:var(--text2);line-height:1.5}
+.photo-drop-sub{font-size:.7rem;color:var(--text3);margin-top:3px}
+.photo-note-row{display:flex;gap:7px;margin-bottom:10px}
+.photo-note-input{flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:var(--sans);font-size:.8rem;outline:none}
+.photo-note-input:focus{border-color:var(--blue)}
+.photo-note-input::placeholder{color:var(--text3)}
+.photo-list{display:flex;flex-direction:column;gap:6px}
+.photo-item{display:flex;align-items:center;gap:9px;background:var(--bg3);border-radius:8px;padding:8px 10px;border:1px solid var(--border);cursor:pointer;transition:border-color .2s}
+.photo-item:hover{border-color:var(--border2)}
+.photo-thumb{width:38px;height:38px;border-radius:6px;object-fit:cover;flex-shrink:0;border:1px solid var(--border2)}
+.photo-item-info{flex:1;min-width:0}
+.photo-item-name{font-size:.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo-item-meta{font-family:var(--mono);font-size:.66rem;color:var(--text2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo-item-note{font-size:.7rem;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo-item-actions{display:flex;flex-direction:column;gap:3px;flex-shrink:0}
+.photo-item-actions button{background:none;border:none;cursor:pointer;color:var(--text3);font-size:.75rem;padding:2px 5px;border-radius:4px;transition:color .2s}
+.photo-item-actions button:hover{color:var(--text)}
+.photo-item-actions .del-btn:hover{color:var(--red)}
+.photo-no-gps{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:8px;padding:9px 12px;font-size:.76rem;color:var(--yellow);margin-bottom:8px;display:none}
+.photo-marker{display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 2px 6px rgba(0,0,0,.55))}
+.photo-marker-img{width:44px;height:44px;border-radius:8px;border:3px solid #fff;object-fit:cover;background-size:cover;background-position:center;flex-shrink:0}
+.photo-marker-tip{width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:10px solid #fff;margin-top:-1px}
+
 /* ── Stats tab — enhanced ── */
 .stats-section-label{font-family:var(--mono);font-size:.63rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin:10px 0 6px}
 .stats-no-data{background:var(--bg3);border:1px dashed var(--border2);border-radius:8px;padding:10px 12px;font-size:.76rem;color:var(--text2);text-align:center;margin-bottom:8px}
@@ -438,6 +465,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <button class="tab-btn" data-tab="strava">Strava</button>
       <button class="tab-btn" data-tab="compare">Compare</button>
       <button class="tab-btn" data-tab="stats">Stats</button>
+      <button class="tab-btn" data-tab="photos">📷 Photos</button>
     </div>
 
     <!-- ROUTES -->
@@ -596,7 +624,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div class="info-row"><span class="info-label">Distance</span><span id="stravaDist" class="info-val">—</span></div>
         <div class="info-row"><span class="info-label">Elev ↑</span><span id="stravaElev" class="info-val">—</span></div>
         <div class="info-row"><span class="info-label">Time</span><span id="stravaTime" class="info-val">—</span></div>
-        <button id="btnClearStrava" class="btn-ghost danger" style="margin-top:8px;width:100%">✕ Remove overlay</button>
+        <button id="btnStravaShare" class="btn-ghost" style="margin-top:8px;width:100%;border-color:#0437F2;color:#0437F2" data-shared="0">📡 Share Route with Observers</button>
+        <button id="btnClearStrava" class="btn-ghost danger" style="margin-top:6px;width:100%">✕ Remove overlay</button>
       </div>
     </div>
 
@@ -627,8 +656,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
     <!-- STATS -->
     <div class="tab-pane" id="tab-stats">
-
-      <!-- Live GPS (existing) -->
       <div class="stats-section-label">Live GPS</div>
       <div class="stats-grid">
         <div class="stat-card"><div class="stat-label">Speed</div><div class="stat-val" id="statSpeed">—</div><div class="stat-unit">km/h</div></div>
@@ -638,59 +665,30 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       </div>
       <div class="coords-row"><span class="info-label">Position</span><span id="statCoords" class="mono">—</span></div>
       <div class="coords-row"><span class="info-label">Heading / Fixes</span><span id="statHeadFixes" class="mono">—</span></div>
-
-      <!-- Strava averages -->
       <div class="stats-section-label" style="margin-top:12px">Strava — Activity Averages</div>
       <div id="statsNoStrava" class="stats-no-data">Connect Strava and load activities to see averages.</div>
       <div id="stravaStatsBlock" class="hidden">
         <div class="sactivity-count" id="sActivityCount"></div>
         <div class="savg-grid">
-          <div class="savg-card">
-            <div class="savg-label">Avg Distance</div>
-            <div class="savg-val" id="sAvgDist">—</div>
-          </div>
-          <div class="savg-card">
-            <div class="savg-label">Avg Elev Gain</div>
-            <div class="savg-val" id="sAvgElev">—</div>
-          </div>
-          <div class="savg-card">
-            <div class="savg-label">Avg Duration</div>
-            <div class="savg-val" id="sAvgTime">—</div>
-          </div>
-          <div class="savg-card">
-            <div class="savg-label">Avg Speed</div>
-            <div class="savg-val" id="sAvgSpeed">—</div><div class="savg-unit">km/h</div>
-          </div>
+          <div class="savg-card"><div class="savg-label">Avg Distance</div><div class="savg-val" id="sAvgDist">—</div></div>
+          <div class="savg-card"><div class="savg-label">Avg Elev Gain</div><div class="savg-val" id="sAvgElev">—</div></div>
+          <div class="savg-card"><div class="savg-label">Avg Duration</div><div class="savg-val" id="sAvgTime">—</div></div>
+          <div class="savg-card"><div class="savg-label">Avg Speed</div><div class="savg-val" id="sAvgSpeed">—</div><div class="savg-unit">km/h</div></div>
         </div>
         <div class="stotals-row"><span class="stotals-label">Avg Pace</span><span class="stotals-val" id="sAvgPace">—</span></div>
-
-        <!-- Totals -->
         <div class="stats-section-label" style="margin-top:10px">Totals (all loaded activities)</div>
         <div class="stotals-row"><span class="stotals-label">Total Distance</span><span class="stotals-val" id="sTotalDist">—</span></div>
         <div class="stotals-row"><span class="stotals-label">Total Elev Gain</span><span class="stotals-val" id="sTotalElev">—</span></div>
         <div class="stotals-row"><span class="stotals-label">Total Moving Time</span><span class="stotals-val" id="sTotalTime">—</span></div>
-
-        <!-- Completion estimate -->
         <div id="completionBlock" class="hidden">
           <div class="stats-section-label" style="margin-top:10px">Route Completion Estimate</div>
           <div class="comp-block">
             <div class="comp-route-name" id="compRouteName"></div>
-            <div class="comp-progress-track">
-              <div class="comp-progress-bar" id="compProgressBar" style="width:0%"></div>
-            </div>
+            <div class="comp-progress-track"><div class="comp-progress-bar" id="compProgressBar" style="width:0%"></div></div>
             <div class="comp-pct-row">
-              <div class="comp-pct-card">
-                <div class="comp-pct-label">Distance</div>
-                <div class="comp-pct-val" id="compPctDist">—</div>
-              </div>
-              <div class="comp-pct-card">
-                <div class="comp-pct-label">Elevation</div>
-                <div class="comp-pct-val" id="compPctElev">—</div>
-              </div>
-              <div class="comp-pct-card">
-                <div class="comp-pct-label">Overall</div>
-                <div class="comp-pct-val" id="compPctBlend">—</div>
-              </div>
+              <div class="comp-pct-card"><div class="comp-pct-label">Distance</div><div class="comp-pct-val" id="compPctDist">—</div></div>
+              <div class="comp-pct-card"><div class="comp-pct-label">Elevation</div><div class="comp-pct-val" id="compPctElev">—</div></div>
+              <div class="comp-pct-card"><div class="comp-pct-label">Overall</div><div class="comp-pct-val" id="compPctBlend">—</div></div>
             </div>
             <div class="comp-finish-row">
               <div class="comp-finish-icon">🏁</div>
@@ -701,9 +699,31 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
             </div>
           </div>
         </div>
+      </div>
+    </div>
 
-      </div><!-- /stravaStatsBlock -->
-    </div><!-- /tab-stats -->
+
+    <!-- PHOTOS -->
+    <div class="tab-pane" id="tab-photos">
+      <div id="photoNoGps" class="photo-no-gps">
+        ⚠ No GPS data found in that photo. Make sure location is enabled in your camera settings.
+      </div>
+      <div class="photo-drop-zone" id="photoDropZone">
+        <div class="photo-drop-icon">📷</div>
+        <div class="photo-drop-label"><strong>Tap to upload a photo</strong><br/>or drag &amp; drop here</div>
+        <div class="photo-drop-sub">GPS location is read from the photo's metadata</div>
+        <input type="file" id="photoInput" accept="image/*" hidden multiple />
+      </div>
+      <div class="photo-note-row">
+        <input id="photoNoteInput" class="photo-note-input" type="text"
+               placeholder="Add a note for the next photo…" maxlength="200" />
+      </div>
+      <div class="section-header" id="photoListHeader" style="display:none">
+        <span class="section-label">On Map</span>
+        <button id="btnExportPhotoGpx" class="upload-btn-small">⬇ Export GPX</button>
+      </div>
+      <div id="photoList" class="photo-list"></div>
+    </div>
 
   </div><!-- /bottom-panel -->
 
@@ -725,6 +745,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <script src="js/waypoints.js"></script>
 <script src="js/geocoder.js"></script>
 <script src="js/livetrack.js"></script>
+<script src="js/photos.js"></script>
 <script src="js/app.js"></script>
 
 <script>
