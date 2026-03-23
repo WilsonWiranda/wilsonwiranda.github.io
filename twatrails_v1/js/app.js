@@ -505,7 +505,6 @@ function initStravaUI(callbackResult) {
   $('btnStravaRefresh').addEventListener('click', loadStravaActivities);
   $('btnStravaLogout').addEventListener('click', () => { StravaAuth.logout(); clearStravaOverlay(true); showStravaDisconnected(); showToast('Disconnected'); });
   $('btnClearStrava').addEventListener('click', () => clearStravaOverlay(true));
-  $('btnStravaShare').addEventListener('click', toggleStravaShare);
   $('btnFitBoth').addEventListener('click', fitBothRoutes);
 }
 
@@ -546,7 +545,10 @@ async function loadActivityOnMap(activity, itemEl) {
     clearStravaOverlay();
     const latlngs=streams.latlng.data, alts=streams.altitude?.data||[];
     state.stravaPolyline=L.polyline(latlngs,{color:'#0437F2',weight:4,opacity:0.88,dashArray:'7 4',lineJoin:'round'}).addTo(state.map);
-    state.stravaPolyline.bindPopup(`<b>Strava: ${activity.name}</b><br/>${fmtDist(activity.distance)}`);
+    state.stravaPolyline.bindPopup(() => buildStravaPopup(state.stravaStats));
+    state.stravaPolyline.on('click', () => {
+      state.stravaPolyline.setPopupContent(buildStravaPopup(state.stravaStats));
+    });
     state.map.fitBounds(state.stravaPolyline.getBounds(),{padding:[40,40]});
     let elevGain=0; for(let i=1;i<alts.length;i++){const d=alts[i]-alts[i-1];if(d>0)elevGain+=d;}
     state.stravaStats={name:activity.name,distance:activity.distance,elevation:activity.total_elevation_gain||elevGain,movingTime:activity.moving_time,points:latlngs.length,latlngs};
@@ -564,7 +566,7 @@ function clearStravaOverlay(unpublish=true) {
   $('stravaOverlayInfo').classList.add('hidden');
   document.querySelectorAll('.activity-item').forEach(el=>el.classList.remove('active'));
   if(unpublish) LiveTrack.unpublishStrava();
-  updateStravaShareBtn(false);
+  window._stravaShared = false;
 }
 
 // ── Compare ───────────────────────────────────────────────────
@@ -586,6 +588,28 @@ function fitBothRoutes() {
 
 
 // ── Strava share to Firebase ─────────────────────────────────────
+function buildStravaPopup(stats, shared) {
+  if (!stats) return '<b style="color:#0437F2">Strava Activity</b>';
+  const isShared = shared !== undefined ? shared : (window._stravaShared || false);
+  const shareLabel  = isShared ? '⏹ Stop Sharing' : '📡 Share with Observers';
+  const shareStyle  = isShared
+    ? 'background:#1a1a2e;color:#0437F2;border:1px solid #0437F2;'
+    : 'background:#0437F2;color:#fff;border:none;';
+  return `
+    <div style="font-family:Syne,sans-serif;min-width:200px">
+      <b style="font-size:.88rem;color:#0437F2">🏃 ${stats.name}</b><br/>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#aaa;margin-top:4px">
+        ${fmtDist(stats.distance)} · ↑${Math.round(stats.elevation||0)}m · ${fmtTime(stats.movingTime)}
+      </div>
+      <button onclick="toggleStravaShare()"
+        style="margin-top:8px;width:100%;padding:7px 10px;border-radius:7px;
+               font-family:Syne,sans-serif;font-weight:700;font-size:.78rem;
+               cursor:pointer;${shareStyle}">
+        ${shareLabel}
+      </button>
+    </div>`;
+}
+
 async function toggleStravaShare() {
   const btn = $('btnStravaShare');
   const isShared = btn.dataset.shared === '1';
@@ -603,21 +627,12 @@ async function toggleStravaShare() {
 }
 
 function updateStravaShareBtn(shared) {
-  const btn = $('btnStravaShare');
-  if (!btn) return;
-  btn.disabled = false;
-  btn.dataset.shared = shared ? '1' : '0';
-  if (shared) {
-    btn.textContent = '⏹ Stop Sharing Route';
-    btn.style.background  = 'var(--bg4)';
-    btn.style.color       = '#0437F2';
-    btn.style.borderColor = '#0437F2';
-  } else {
-    btn.textContent = '📡 Share Route with Observers';
-    btn.style.background  = '';
-    btn.style.color       = '';
-    btn.style.borderColor = '';
+  // Update the in-popup share button if the popup is open
+  if (state.stravaPolyline && state.stravaPolyline.isPopupOpen()) {
+    state.stravaPolyline.setPopupContent(buildStravaPopup(state.stravaStats, shared));
   }
+  // Store share state globally so popup rebuild picks it up
+  window._stravaShared = shared;
 }
 
 // ── Observer: receive shared Strava route from Firebase ───────────
@@ -648,6 +663,39 @@ function startStravaObserver() {
   });
 }
 
+// ── Observer: receive shared photos from Firebase ────────────────
+const sharedPhotoState = { markers: [] };
+
+function startPhotoObserver() {
+  LiveTrack.subscribePhotos(photos => {
+    // Remove old observer markers
+    sharedPhotoState.markers.forEach(m => state.map.removeLayer(m));
+    sharedPhotoState.markers = [];
+    if (!photos || !photos.length) return;
+    photos.forEach(p => {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="photo-marker">
+                 <div class="photo-marker-img" style="background-image:url('${p.thumb}')"></div>
+                 <div class="photo-marker-tip"></div>
+               </div>`,
+        iconSize: [48, 56], iconAnchor: [24, 56], popupAnchor: [0, -58],
+      });
+      const marker = L.marker([p.lat, p.lon], { icon, zIndexOffset: 490 }).addTo(state.map);
+      marker.bindPopup(`
+        <div style="font-family:Syne,sans-serif;min-width:180px">
+          <img src="${p.thumb}" style="width:100%;border-radius:6px;margin-bottom:6px;display:block"/>
+          <b style="font-size:.85rem">${p.name}</b>
+          ${p.note ? `<div style="font-size:.76rem;color:#ccc;margin-top:4px">${p.note}</div>` : ''}
+          <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#666;margin-top:4px">
+            ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
+          </div>
+        </div>`);
+      sharedPhotoState.markers.push(marker);
+    });
+  });
+}
+
 // ── Photos ────────────────────────────────────────────────────────
 function initPhotosUI() {
   const dropZone  = $('photoDropZone');
@@ -673,7 +721,11 @@ function initPhotosUI() {
     showToast('Photos exported ✓');
   });
 
-  Photos.onChange(renderPhotoList);
+  Photos.onChange(photos => {
+    renderPhotoList(photos);
+    // Push to Firebase so observers see the photos too
+    LiveTrack.publishPhotos(photos);
+  });
 
   async function handlePhotoFiles(files) {
     noGpsMsg.style.display = 'none';
@@ -749,6 +801,18 @@ function updateStatsTab() {
   const totalElev = pool.reduce((s,a) => s + (a.total_elevation_gain||0), 0);
   const totalTime = pool.reduce((s,a) => s + (a.moving_time||0), 0);
 
+  // For completion: only use activities on/after the route start date
+  // and only when a route is actually loaded
+  const routeStartDate = route ? HIKE_START : null;
+  const routePool = route && routeStartDate
+    ? pool.filter(a => {
+        const d = new Date(a.start_date_local || a.start_date);
+        return d >= routeStartDate;
+      })
+    : pool;
+  const routeTotalDist = routePool.reduce((s,a) => s + (a.distance||0), 0);
+  const routeTotalElev = routePool.reduce((s,a) => s + (a.total_elevation_gain||0), 0);
+
   const avgDist  = totalDist / n;
   const avgElev  = totalElev / n;
   const avgTime  = totalTime / n;
@@ -772,8 +836,8 @@ function updateStatsTab() {
 
   const routeDist = route.stats.distance;
   const routeElev = route.stats.elevation;
-  const pctDist   = Math.min(100, (totalDist / routeDist) * 100);
-  const pctElev   = Math.min(100, (totalElev / routeElev) * 100);
+  const pctDist   = Math.min(100, (routeTotalDist / routeDist) * 100);
+  const pctElev   = Math.min(100, (routeTotalElev / routeElev) * 100);
   const pctBlend  = pctDist * 0.6 + pctElev * 0.4;
 
   $('compRouteName').textContent  = route.name;
@@ -791,7 +855,7 @@ function updateStatsTab() {
   })();
   const lastWpWithDate = [...wps].reverse().find(w => w.date);
   const plannedFinish  = lastWpWithDate ? new Date(lastWpWithDate.date + 'T12:00:00') : null;
-  const remaining      = routeDist - totalDist;
+  const remaining      = Math.max(0, routeDist - routeTotalDist);
 
   if (remaining <= 0) {
     $('compFinishEst').textContent    = '🎉 Route complete!';
@@ -879,6 +943,8 @@ function initLiveTrack() {
   startViewerSubscription();
   // Subscribe — all visitors see any shared Strava route
   startStravaObserver();
+  // Subscribe — all visitors see shared photos
+  startPhotoObserver();
 
   // Restore hiker sharing state if page was reloaded mid-share
   if (LiveTrack.getIsHiker()) {

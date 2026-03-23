@@ -27,9 +27,11 @@ const LiveTrack = (() => {
   let db               = null;
   let posRef           = null;
   let stravaRef        = null;
+  let photosRef        = null;
   let isSharing        = false;
   let viewerListener   = null;
   let stravaListener   = null;
+  let photosListener   = null;
   let statusCb         = null;
 
   // ── Auto-init on load ─────────────────────────────────────
@@ -47,6 +49,7 @@ const LiveTrack = (() => {
       db        = firebase.database();
       posRef    = db.ref('/hiker/position');
       stravaRef = db.ref('/shared/strava');
+      photosRef = db.ref('/shared/photos');
       return true;
     } catch (e) {
       console.error('[LiveTrack] Init failed:', e.message);
@@ -162,6 +165,49 @@ const LiveTrack = (() => {
     }
   }
 
+  // ── Photos sharing ───────────────────────────────────────────
+  // photos: array of { lat, lon, thumb, name, note }
+  // Note: thumb is an object URL — we store the URL as-is.
+  // Observers load it from the same Firebase entry.
+  async function publishPhotos(photos) {
+    if (!photosRef) return;
+    try {
+      if (!photos || photos.length === 0) {
+        await photosRef.set({ photos: [], ts: Date.now() });
+        return;
+      }
+      // Limit to 20 photos, strip large data
+      const safe = photos.slice(0, 20).map(p => ({
+        lat:      parseFloat(p.lat.toFixed(6)),
+        lon:      parseFloat(p.lon.toFixed(6)),
+        name:     p.name || '',
+        note:     p.note || '',
+        thumb:    p.thumb || '',
+        datetime: p.datetime || '',
+      }));
+      await photosRef.set({ photos: safe, ts: Date.now() });
+    } catch (e) {
+      console.warn('[LiveTrack] Photos publish failed:', e.message);
+    }
+  }
+
+  function subscribePhotos(cb) {
+    if (!photosRef) return;
+    photosListener = photosRef.on('value', snap => {
+      const data = snap.val();
+      cb(data && data.photos ? data.photos : []);
+    }, err => {
+      console.warn('[LiveTrack] Photos listener error:', err.message);
+    });
+  }
+
+  function unsubscribePhotos() {
+    if (photosRef && photosListener !== null) {
+      photosRef.off('value', photosListener);
+      photosListener = null;
+    }
+  }
+
   // ── Callbacks / state ─────────────────────────────────────
   function onStatus(cb)   { statusCb = cb; }
   function isReady()      { return !!db; }
@@ -172,8 +218,10 @@ const LiveTrack = (() => {
     setIsHiker, getIsHiker,
     startSharing, stopSharing, pushPosition,
     publishStrava, unpublishStrava,
+    publishPhotos,
     subscribeViewer, unsubscribeViewer,
     subscribeStrava, unsubscribeStrava,
+    subscribePhotos, unsubscribePhotos,
     onStatus, isReady, isSharingNow,
   };
 
