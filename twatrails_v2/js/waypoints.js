@@ -38,11 +38,21 @@ const Waypoints = (() => {
 
     map.on('click', e => {
       if (!addMode) return;
-      const name = prompt('Pin name:', 'My waypoint');
-      if (name === null) return; // cancelled
-      const note = prompt('Note (optional):', '') || '';
-      addCustomPin(e.latlng.lat, e.latlng.lng, name || 'Pin', note);
-      setAddMode(false);
+      const { lat, lng } = e.latlng;
+      // Use the inline modal defined in index.html (multiline, no browser prompt)
+      if (typeof showNoteForm === 'function') {
+        showNoteForm(lat, lng, (name, note) => {
+          addCustomPin(lat, lng, name || 'Note', note);
+          setAddMode(false);
+        });
+      } else {
+        // Fallback to prompt if modal not available
+        const name = prompt('Note title:', '');
+        if (name === null) return;
+        const note = prompt('Note text (optional):', '') || '';
+        addCustomPin(lat, lng, name || 'Note', note);
+        setAddMode(false);
+      }
     });
   }
 
@@ -54,7 +64,7 @@ const Waypoints = (() => {
   function getAddMode() { return addMode; }
 
   function addCustomPin(lat, lon, name, note) {
-    const id     = Date.now();
+    const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     const marker = L.marker([lat, lon], { icon: makeIcon(CUSTOM_ICON_HTML) }).addTo(map);
     marker.bindPopup(`
       <div style="font-family:Syne,sans-serif;min-width:140px">
@@ -65,7 +75,7 @@ const Waypoints = (() => {
       </div>
     `).openPopup();
 
-    markers.push({ id, marker, type:'custom', name, note, lat, lon });
+    markers.push({ id, marker, type:'custom', name, note, lat, lon, date: Date.now() });
     if (onChangeCb) onChangeCb(markers.filter(m => m.type==='custom'));
     return id;
   }

@@ -325,6 +325,9 @@ function renderRouteWaypoints(waypoints) {
 
 function hideRouteWaypoints() { $('routeWaypointsSection').classList.add('hidden'); $('routeWaypointList').innerHTML=''; }
 
+// Track which note IDs are shared
+const _sharedNoteIds = new Set();
+
 function renderCustomPins(pins) {
   const list=$('customPinList'), noMsg=$('noPinsMsg'), exp=$('pinExportRow');
   list.innerHTML='';
@@ -333,10 +336,43 @@ function renderCustomPins(pins) {
   pins.forEach(pin => {
     const el=document.createElement('div'); el.className='waypoint-item';
     const dateStr = pin.date ? new Date(pin.date).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}) : '';
-    el.innerHTML=`<div class="waypoint-icon">📍</div><div class="waypoint-info"><div class="waypoint-name">${pin.name}</div>${pin.note?`<div class="waypoint-note">${pin.note}</div>`:''}<div class="waypoint-note" style="color:var(--text3)">${dateStr}</div></div><div class="waypoint-actions"><button onclick="Waypoints.remove(${pin.id});renderCustomPins(Waypoints.getCustom())" title="Remove">✕</button></div>`;
+    const isShared = _sharedNoteIds.has(String(pin.id));
+    const shareStyle = isShared
+      ? 'background:rgba(4,55,242,.15);color:#0437F2;border:1px solid #0437F2;'
+      : 'background:var(--bg4);color:var(--text2);border:1px solid var(--border2);';
+    el.innerHTML=`
+      <div class="waypoint-icon">📍</div>
+      <div class="waypoint-info">
+        <div class="waypoint-name">${pin.name}</div>
+        ${pin.note ? `<div class="waypoint-note">${pin.note}</div>` : ''}
+        <div class="waypoint-note" style="color:var(--text3)">${dateStr}</div>
+      </div>
+      <div class="waypoint-actions" style="display:flex;flex-direction:column;gap:3px">
+        <button onclick="toggleNoteShare(${pin.id})"
+          style="font-size:.65rem;padding:2px 6px;border-radius:5px;cursor:pointer;${shareStyle}font-family:var(--sans);font-weight:700">
+          ${isShared ? '⏹' : '📡'}
+        </button>
+        <button onclick="Waypoints.remove(${pin.id});renderCustomPins(Waypoints.getCustom())" title="Remove" style="color:var(--text3)">✕</button>
+      </div>`;
     el.addEventListener('click', e => { if(e.target.tagName==='BUTTON') return; state.map.setView([pin.lat,pin.lon],16,{animate:true}); });
     list.appendChild(el);
   });
+}
+
+async function toggleNoteShare(pinId) {
+  const id = String(pinId);
+  const pin = Waypoints.getCustom().find(p => String(p.id) === id);
+  if (!pin) return;
+  if (_sharedNoteIds.has(id)) {
+    await LiveTrack.unpublishNote(id);
+    _sharedNoteIds.delete(id);
+    showToast('Note un-shared');
+  } else {
+    const ok = await LiveTrack.publishNote(pin);
+    if (ok) { _sharedNoteIds.add(id); showToast('📡 Note shared'); }
+    else showToast('Share failed');
+  }
+  renderCustomPins(Waypoints.getCustom());
 }
 
 function exportPinsExcel() {
@@ -1115,6 +1151,36 @@ function togglePhotosVisibility() {
   showToast(photosVisible ? '📷 Photos shown' : '📷 Photos hidden');
 }
 
+
+// ── Observer: receive shared notes from Firebase ─────────────────
+const sharedNotesState = { markers: [] };
+
+function startNotesObserver() {
+  LiveTrack.subscribeNotes(notes => {
+    sharedNotesState.markers.forEach(m => state.map.removeLayer(m));
+    sharedNotesState.markers = [];
+    if (!notes || !notes.length) return;
+    notes.forEach(n => {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="background:#0437F2;color:#fff;border-radius:50% 50% 50% 0;
+                width:22px;height:22px;transform:rotate(-45deg);border:2px solid #fff;
+                box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;
+                justify-content:center;font-size:10px">📍</div>`,
+        iconSize:[22,22], iconAnchor:[11,22], popupAnchor:[0,-24],
+      });
+      const title = n.note || n.name;
+      const marker = L.marker([n.lat, n.lon], { icon, zIndexOffset: 480 }).addTo(state.map);
+      marker.bindPopup(`<div style="font-family:Syne,sans-serif;min-width:160px">
+        <b style="color:#0437F2">📍 ${title}</b><br/>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#666;margin-top:4px">
+          ${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}
+        </div></div>`);
+      sharedNotesState.markers.push(marker);
+    });
+  });
+}
+
 // ── Toast ─────────────────────────────────────────────────────
 let toastTimer=null;
 function showToast(msg) {
@@ -1193,6 +1259,8 @@ function initLiveTrack() {
   startStravaObserver();
   // Subscribe — all visitors see shared photos
   startPhotoObserver();
+  // Subscribe — all visitors see shared notes
+  startNotesObserver();
 
   // Restore hiker sharing state if page was reloaded mid-share
   if (LiveTrack.getIsHiker()) {

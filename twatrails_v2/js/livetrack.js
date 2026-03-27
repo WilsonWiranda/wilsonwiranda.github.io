@@ -29,6 +29,7 @@ const LiveTrack = (() => {
   let stravaRef        = null;   // legacy single-activity (kept for compat)
   let activitiesRef    = null;   // multi-activity map
   let photosRef        = null;
+  let notesRef         = null;
   let isSharing        = false;
   let viewerListener   = null;
   let stravaListener      = null;
@@ -53,6 +54,7 @@ const LiveTrack = (() => {
       stravaRef     = db.ref('/shared/strava');     // kept for compat
       activitiesRef = db.ref('/shared/activities'); // multi-activity
       photosRef     = db.ref('/shared/photos');
+      notesRef      = db.ref('/shared/notes');
       return true;
     } catch (e) {
       console.error('[LiveTrack] Init failed:', e.message);
@@ -196,6 +198,7 @@ const LiveTrack = (() => {
 
   // Track which photo IDs we've written so we can remove deleted ones
   const _publishedPhotoIds = new Set();
+  const _publishedNoteIds  = new Set();
 
   async function publishPhotos(photos) {
     if (!photosRef) return;
@@ -255,6 +258,41 @@ const LiveTrack = (() => {
     }
   }
 
+  // ── Notes sharing ───────────────────────────────────────────
+  async function publishNote(pin) {
+    if (!notesRef) return false;
+    try {
+      const id = String(pin.id).replace(/[.#$\[\]]/g, '_');
+      await notesRef.child(id).set({
+        lat:  parseFloat(pin.lat.toFixed(6)),
+        lon:  parseFloat(pin.lon.toFixed(6)),
+        name: pin.name || '',
+        note: pin.note || '',
+        date: pin.date || Date.now(),
+        ts:   Date.now(),
+      });
+      _publishedNoteIds.add(id);
+      return true;
+    } catch(e) {
+      console.error('[LiveTrack] Note publish failed:', e.message);
+      return false;
+    }
+  }
+
+  async function unpublishNote(pinId) {
+    if (!notesRef) return;
+    const id = String(pinId).replace(/[.#$\[\]]/g, '_');
+    try { await notesRef.child(id).remove(); _publishedNoteIds.delete(id); } catch(_) {}
+  }
+
+  function subscribeNotes(cb) {
+    if (!notesRef) return;
+    notesRef.on('value', snap => {
+      const data = snap.val();
+      cb(data ? Object.values(data) : []);
+    }, err => console.warn('[LiveTrack] Notes listener:', err.message));
+  }
+
   // ── Callbacks / state ─────────────────────────────────────
   function onStatus(cb)   { statusCb = cb; }
   function isReady()      { return !!db; }
@@ -265,6 +303,7 @@ const LiveTrack = (() => {
     setIsHiker, getIsHiker,
     startSharing, stopSharing, pushPosition,
     publishStrava, unpublishStrava, unpublishAllStrava,
+    publishNote, unpublishNote, subscribeNotes,
     publishPhotos,
     subscribeViewer, unsubscribeViewer,
     subscribeStrava, unsubscribeStrava,

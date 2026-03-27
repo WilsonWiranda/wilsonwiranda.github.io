@@ -393,6 +393,18 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .lang-btn{background:none;border:none;cursor:pointer;padding:2px;border-radius:4px;font-size:1.2rem;opacity:.45;transition:opacity .2s;line-height:1}
 .lang-btn:hover,.lang-btn.active{opacity:1}
 .lang-btn.active{outline:1.5px solid var(--green);border-radius:4px}
+
+/* ── Note form modal ── */
+.note-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:8000;display:flex;align-items:center;justify-content:center;padding:20px}
+.note-modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:16px;width:100%;max-width:320px;display:flex;flex-direction:column;gap:10px}
+.note-modal-title{font-size:.85rem;font-weight:700;color:var(--text)}
+.note-modal input,.note-modal textarea{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 11px;color:var(--text);font-family:var(--sans);font-size:.82rem;outline:none;width:100%}
+.note-modal input:focus,.note-modal textarea:focus{border-color:var(--blue)}
+.note-modal textarea{min-height:80px;resize:vertical;line-height:1.5}
+.note-modal-btns{display:flex;gap:8px}
+.note-modal-btns button{flex:1;padding:9px;border-radius:8px;font-family:var(--sans);font-weight:700;font-size:.82rem;cursor:pointer;border:none}
+.note-modal-ok{background:var(--green);color:#081a0f}
+.note-modal-cancel{background:var(--bg4);color:var(--text2)}
   </style>
 </head>
 <body>
@@ -448,7 +460,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div class="lang-select" id="langSelect">
         <button class="lang-btn active" data-lang="en" title="English" onclick="setLang('en')">🇬🇧</button>
         <button class="lang-btn" data-lang="es" title="Español" onclick="setLang('es')">🇪🇸</button>
-        <button class="lang-btn" data-lang="ca" title="Català" onclick="setLang('ca')">🏴</button>
+        <button class="lang-btn" data-lang="ca" title="Català" onclick="setLang('ca')" style="padding:1px 2px;line-height:1"><img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 14' width='22' height='14' style='border-radius:2px;vertical-align:middle'><rect width='22' height='14' fill='%23FFD700'/><rect y='1.75' width='22' height='1.75' fill='%23CC1010'/><rect y='5.25' width='22' height='1.75' fill='%23CC1010'/><rect y='8.75' width='22' height='1.75' fill='%23CC1010'/><rect y='12.25' width='22' height='1.75' fill='%23CC1010'/></svg>" width="22" height="14" alt="CA" style="display:block;border-radius:2px"/></button>
       </div>
       <div id="gpsStatus" class="gps-badge gps-off">
         <span class="gps-dot"></span>
@@ -476,7 +488,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <button class="tab-btn" data-tab="live">
         <span class="tab-live-dot hidden" id="tabLiveDot"></span>Live
       </button>
-      <button class="tab-btn" data-tab="pins">Waypoint</button>
+      <button class="tab-btn" data-tab="pins">Stages</button>
       <button class="tab-btn" data-tab="notes">Notes</button>
       <button class="tab-btn" data-tab="strava">Hiker</button>
       <button class="tab-btn" data-tab="compare">Compare</button>
@@ -536,12 +548,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <!-- WAYPOINT -->
     <div class="tab-pane" id="tab-pins">
       <div id="routeWaypointsSection" class="hidden">
-        <div class="section-label">Route Waypoints</div>
+        <div class="section-label">Stages</div>
         <div id="routeWaypointList" class="waypoint-list"></div>
       </div>
       <div class="empty-state" id="noWaypointsMsg" style="padding:20px 0">
         <div class="empty-icon">🗺</div>
-        <p>Load a <strong>pre-loaded route</strong> to see its waypoints here.</p>
+        <p>Load a <strong>pre-loaded route</strong> to see its stages here.</p>
       </div>
     </div>
 
@@ -770,13 +782,13 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 const LANG = {
   en: {
     openApp:'Open App', searchPlace:'Search place…',
-    tabRoutes:'Routes', tabLive:'Live', tabWaypoint:'Waypoint',
+    tabRoutes:'Routes', tabLive:'Live', tabWaypoint:'Stages',
     tabNotes:'Notes', tabHiker:'Hiker', tabCompare:'Compare',
     tabStats:'Stats', tabPhotos:'📷 Photos',
     trackPos:'📍 Track My Position', startSharing:'📡 Start Sharing Location',
     stopSharing:'⏹ Stop Sharing', dropNote:'📌 Drop Note', cancelNote:'✕ Cancel',
     exportNotes:'⬇ Export Notes (Excel)', noNotes:'Tap Drop Note then tap the map to add a note.',
-    noWaypoints:'Load a pre-loaded route to see its waypoints here.',
+    noWaypoints:'Load a pre-loaded route to see its stages here.',
     uploadGpx:'+ Upload GPX', preloadedTrails:'Pre-loaded Trails',
     activeOnMap:'Active on Map', iAmHiker:'I am the hiker', notSharing:'Not sharing',
     enableGPSFirst:'Enable GPS tracking first, then start sharing.',
@@ -789,13 +801,13 @@ const LANG = {
   },
   es: {
     openApp:'Abrir App', searchPlace:'Buscar lugar…',
-    tabRoutes:'Rutas', tabLive:'En Vivo', tabWaypoint:'Puntos',
+    tabRoutes:'Rutas', tabLive:'En Vivo', tabWaypoint:'Etapas',
     tabNotes:'Notas', tabHiker:'Excursionista', tabCompare:'Comparar',
     tabStats:'Stats', tabPhotos:'📷 Fotos',
     trackPos:'📍 Rastrear Posición', startSharing:'📡 Compartir Ubicación',
     stopSharing:'⏹ Parar', dropNote:'📌 Añadir Nota', cancelNote:'✕ Cancelar',
     exportNotes:'⬇ Exportar Notas (Excel)', noNotes:'Pulsa Añadir Nota y toca el mapa.',
-    noWaypoints:'Carga una ruta para ver sus puntos.',
+    noWaypoints:'Carga una ruta para ver sus etapas.',
     uploadGpx:'+ Subir GPX', preloadedTrails:'Rutas Precargadas',
     activeOnMap:'Activo en Mapa', iAmHiker:'Soy el excursionista', notSharing:'No compartiendo',
     enableGPSFirst:'Activa el GPS primero, luego empieza a compartir.',
@@ -808,19 +820,19 @@ const LANG = {
   },
   ca: {
     openApp:'Obrir App', searchPlace:'Cerca un lloc…',
-    tabRoutes:'Rutes', tabLive:'En Viu', tabWaypoint:'Punts',
+    tabRoutes:'Rutes', tabLive:'En Viu', tabWaypoint:'Etapes',
     tabNotes:'Notes', tabHiker:'Excursionista', tabCompare:'Comparar',
     tabStats:'Stats', tabPhotos:'📷 Fotos',
     trackPos:'📍 Rastrejar Posició', startSharing:'📡 Compartir Ubicació',
     stopSharing:'⏹ Parar', dropNote:'📌 Afegir Nota', cancelNote:'✕ Cancel·lar',
     exportNotes:'⬇ Exportar Notes (Excel)', noNotes:'Prem Afegir Nota i toca el mapa.',
-    noWaypoints:'Carrega una ruta per veure els seus punts.',
+    noWaypoints:"Carrega una ruta per veure les seves etapes.",
     uploadGpx:'+ Pujar GPX', preloadedTrails:'Rutes Precàrregades',
-    activeOnMap:'Actiu al Mapa', iAmHiker:'Sóc l'excursionista', notSharing:'No compartint',
+    activeOnMap:'Actiu al Mapa', iAmHiker:"Sóc l'excursionista", notSharing:'No compartint',
     enableGPSFirst:'Activa el GPS primer, després comença a compartir.',
-    hikerPosition:'Posició de l'excursionista', status:'ESTAT', lastUpdate:'ÚLTIMA ACTUALITZACIÓ',
+    hikerPosition:"Posició de l'excursionista", status:'ESTAT', lastUpdate:'ÚLTIMA ACTUALITZACIÓ',
     altitude:'ALTITUD', speed:'VELOCITAT', accuracy:'PRECISIÓ',
-    jumpToHiker:'🎯 Anar a l'excursionista',
+    jumpToHiker:"🎯 Anar a l'excursionista",
     sharedActivitiesAvg:'Activitats Compartides — Mitjanes',
     connectStrava:'Comparteix activitats de Strava per veure mitjanes.',
     startIn:'Comença en', lifeIsGood:'La vida és BONA!',
@@ -914,6 +926,58 @@ const _splashBtn = document.getElementById('splashEnter');
 if (_splashBtn) {
   _splashBtn.addEventListener('click', () => setTimeout(() => setLang(_currentLang), 400));
 }
+</script>
+
+
+<!-- Note form modal -->
+<div id="noteModal" class="note-modal-overlay hidden">
+  <div class="note-modal">
+    <div class="note-modal-title">📍 Add Note</div>
+    <input id="noteModalName" type="text" placeholder="Title (e.g. Great viewpoint)" maxlength="100" />
+    <textarea id="noteModalText" placeholder="Write your note here…&#10;(multiple lines OK)" maxlength="500"></textarea>
+    <div class="note-modal-btns">
+      <button class="note-modal-cancel" onclick="closeNoteForm(false)">Cancel</button>
+      <button class="note-modal-ok" onclick="closeNoteForm(true)">Add Note</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+/* ── Note form modal ── */
+var _noteFormCallback = null;
+function showNoteForm(lat, lon, cb) {
+  _noteFormCallback = cb;
+  document.getElementById('noteModalName').value = '';
+  document.getElementById('noteModalText').value = '';
+  document.getElementById('noteModal').classList.remove('hidden');
+  // Focus name field
+  setTimeout(() => document.getElementById('noteModalName').focus(), 100);
+}
+function closeNoteForm(save) {
+  const modal = document.getElementById('noteModal');
+  modal.classList.add('hidden');
+  if (save && _noteFormCallback) {
+    const name = document.getElementById('noteModalName').value.trim() || 'Note';
+    const note = document.getElementById('noteModalText').value.trim();
+    _noteFormCallback(name, note);
+  }
+  _noteFormCallback = null;
+}
+// Allow Enter on name field to move to textarea
+document.addEventListener('DOMContentLoaded', () => {
+  const nameInput = document.getElementById('noteModalName');
+  if (nameInput) {
+    nameInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('noteModalText').focus(); }
+    });
+  }
+  // Close on overlay click
+  const modal = document.getElementById('noteModal');
+  if (modal) {
+    modal.addEventListener('click', e => { if (e.target === modal) closeNoteForm(false); });
+  }
+});
 </script>
 
 </body>
