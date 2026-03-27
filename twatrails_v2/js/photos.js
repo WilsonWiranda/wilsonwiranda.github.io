@@ -242,7 +242,7 @@ const Photos = (() => {
             shareCanvas.getContext('2d').drawImage(img, 0, 0, shareCanvas.width, shareCanvas.height);
             const shareThumb = shareCanvas.toDataURL('image/jpeg', 0.6);
 
-            const id    = Date.now() + Math.random();
+            const id    = Date.now() * 1000 + Math.floor(Math.random() * 1000); // integer only — no dot in Firebase key
             const name  = file.name.replace(/\.[^.]+$/, '');
             const entry = addPhoto(exif.lat, exif.lon, thumb, name, note, exif.datetime, id, shareThumb);
             map.setView([exif.lat, exif.lon], 16, { animate: true });

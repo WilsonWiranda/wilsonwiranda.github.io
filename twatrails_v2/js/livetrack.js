@@ -213,7 +213,7 @@ const LiveTrack = (() => {
       // Add / update each photo individually using shareThumb (~20KB)
       // shareThumb is a small 200px version safe for Firebase Realtime DB
       for (const p of photos) {
-        const id    = String(p.id);
+        const id    = String(p.id).replace(/[.#$\[\]]/g, '_'); // sanitize Firebase key chars
         const thumb = p.shareThumb || p.thumb || ''; // prefer small version
         try {
           await photosRef.child(id).set({
