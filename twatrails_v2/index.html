@@ -853,7 +853,12 @@ function setLang(lang) {
                   notes:L.tabNotes, strava:L.tabHiker, compare:L.tabCompare,
                   stats:L.tabStats, photos:L.tabPhotos};
   document.querySelectorAll('.tab-btn[data-tab]').forEach(b => {
-    if (tabMap[b.dataset.tab]) b.childNodes[b.childNodes.length-1].textContent = ' ' + tabMap[b.dataset.tab];
+    if (!tabMap[b.dataset.tab]) return;
+    // Find the last text node (tab may contain a span for the live dot)
+    const nodes = [...b.childNodes];
+    const lastText = nodes.filter(n => n.nodeType === 3).pop(); // text node
+    if (lastText) { lastText.textContent = tabMap[b.dataset.tab]; }
+    else { b.textContent = tabMap[b.dataset.tab]; }
   });
 
   // GPS + Live buttons
@@ -894,12 +899,20 @@ function setLang(lang) {
   if (jh) jh.textContent = L.jumpToHiker;
 }
 
-// Apply saved language on load
-document.addEventListener('DOMContentLoaded', () => setLang(_currentLang));
-// Also apply after splash is dismissed (DOM elements may not exist yet)
-const _origSplash = document.getElementById('splashEnter');
-if (_origSplash) {
-  _origSplash.addEventListener('click', () => setTimeout(() => setLang(_currentLang), 300));
+// Expose globally so onclick="setLang('xx')" works
+window.setLang = setLang;
+
+// Apply after splash open (elements exist then)
+document.addEventListener('DOMContentLoaded', () => {
+  // Highlight saved lang button immediately
+  document.querySelectorAll('.lang-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.lang === _currentLang));
+});
+
+// Re-apply full translation when app opens
+const _splashBtn = document.getElementById('splashEnter');
+if (_splashBtn) {
+  _splashBtn.addEventListener('click', () => setTimeout(() => setLang(_currentLang), 400));
 }
 </script>
 
