@@ -181,14 +181,14 @@ const Photos = (() => {
   function buildPopup(id) {
     const p = photos.find(x => x.id === id);
     if (!p) return '';
-    const dtStr = p.datetime ? `<div style="font-family:var(--mono);font-size:.65rem;color:#888;margin-top:2px">${fmtDatetime(p.datetime)}</div>` : '';
-    const noteStr = p.note ? `<div style="font-size:.76rem;color:#ccc;margin-top:5px;line-height:1.4">${p.note}</div>` : '';
+    // If a note is set, use it as the title; otherwise fall back to filename
+    const title  = p.note ? p.note : p.name;
+    const dtStr  = p.datetime ? `<div style="font-family:var(--mono);font-size:.65rem;color:#888;margin-top:2px">${fmtDatetime(p.datetime)}</div>` : '';
     return `
       <div style="font-family:Syne,sans-serif;min-width:180px">
         <img src="${p.thumb}" style="width:100%;border-radius:6px;margin-bottom:6px;display:block"/>
-        <b style="font-size:.85rem">${p.name}</b>
+        <b style="font-size:.85rem">${title}</b>
         ${dtStr}
-        ${noteStr}
         <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#666;margin-top:4px">
           ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
         </div>

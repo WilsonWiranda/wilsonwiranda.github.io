@@ -16,6 +16,7 @@ const state = {
   stravaStats: null,
   stravaActivities: [],   // all fetched — used by Stats tab
   stravaSharedIds: new Set(), // activity IDs currently shared with observers
+  sharedActivities: [],      // activities currently shared — used by Stats+Compare
   userMarker: null,
   userCircle: null,
   gpsWatchId: null,
@@ -669,19 +670,44 @@ function clearStravaOverlay(unpublish=true) {
   $('stravaOverlayInfo').classList.add('hidden');
   document.querySelectorAll('.activity-item').forEach(el=>el.classList.remove('active'));
   if(unpublish) LiveTrack.unpublishStrava();
-  window._stravaShared = false;
 }
 
 // ── Compare ───────────────────────────────────────────────────
 function updateCompareTab() {
-  const hasGPX=state.loadedRoutes.length>0, hasStrava=!!state.stravaPolyline&&!!state.stravaStats;
-  if(!hasGPX||!hasStrava){$('compareEmpty').classList.remove('hidden');$('comparePanel').classList.add('hidden');return;}
-  $('compareEmpty').classList.add('hidden');$('comparePanel').classList.remove('hidden');
-  const gpx=state.loadedRoutes[0].stats,str=state.stravaStats;
-  $('cmpGpxDist').textContent=fmtDist(gpx.distance);$('cmpGpxElev').textContent=`${Math.round(gpx.elevation)} m`;$('cmpGpxPts').textContent=gpx.points;
-  $('cmpStravaDist').textContent=fmtDist(str.distance);$('cmpStravaElev').textContent=`${Math.round(str.elevation)} m`;$('cmpStravaPts').textContent=str.points;
-  const dD=str.distance-gpx.distance,dE=str.elevation-gpx.elevation;
-  $('diffDist').textContent=`${dD>=0?'+':''}${fmtDist(Math.abs(dD))}`;$('diffElev').textContent=`${dE>=0?'+':''}${Math.round(dE)} m`;
+  const shared = state.sharedActivities || [];
+  const hasGPX    = state.loadedRoutes.length > 0;
+  const hasShared = shared.length > 0;
+  if (!hasGPX || !hasShared) {
+    $('compareEmpty').classList.remove('hidden');
+    $('comparePanel').classList.add('hidden');
+    // Update empty message to reflect why
+    const emptyEl = $('compareEmpty');
+    if (emptyEl) emptyEl.querySelector('p').innerHTML =
+      !hasGPX ? 'Load a <strong>pre-loaded route</strong> to compare.'
+              : 'Share at least one <strong>Strava activity</strong> to compare.';
+    return;
+  }
+  $('compareEmpty').classList.add('hidden');
+  $('comparePanel').classList.remove('hidden');
+
+  const gpx = state.loadedRoutes[0].stats;
+
+  // Sum ALL shared activities
+  const sumDist  = shared.reduce((s,a) => s + (a.distance||0), 0);
+  const sumElev  = shared.reduce((s,a) => s + (a.elevation||a.total_elevation_gain||0), 0);
+  const sumPts   = shared.reduce((s,a) => s + (a.points||0), 0);
+
+  $('cmpGpxDist').textContent    = fmtDist(gpx.distance);
+  $('cmpGpxElev').textContent    = `${Math.round(gpx.elevation)} m`;
+  $('cmpGpxPts').textContent     = gpx.points;
+  $('cmpStravaDist').textContent = fmtDist(sumDist);
+  $('cmpStravaElev').textContent = `${Math.round(sumElev)} m`;
+  $('cmpStravaPts').textContent  = `${sumPts} (${shared.length} activit${shared.length===1?'y':'ies'})`;
+
+  const dD = sumDist - gpx.distance;
+  const dE = sumElev - gpx.elevation;
+  $('diffDist').textContent = `${dD>=0?'+':''}${fmtDist(Math.abs(dD))}`;
+  $('diffElev').textContent = `${dE>=0?'+':''}${Math.round(dE)} m`;
 }
 
 function fitBothRoutes() {
@@ -691,30 +717,14 @@ function fitBothRoutes() {
 
 
 // ── Strava share to Firebase ─────────────────────────────────────
-function buildStravaPopup(stats, shared) {
+function buildStravaPopup(stats) {
   if (!stats) return '<b style="color:#0437F2">Strava Activity</b>';
-  const sharedState = shared !== undefined ? shared : (window._stravaShared || false);
-  const isPending   = sharedState === 'pending';
-  const isShared    = sharedState === true || sharedState === '1';
-  const shareLabel  = isPending ? '⏳ Sharing…'
-                    : isShared  ? '⏹ Stop Sharing'
-                    :             '📡 Share with Observers';
-  const shareStyle  = isPending ? 'background:#243445;color:#6e8399;border:1px solid #243445;cursor:default;'
-                    : isShared  ? 'background:#162030;color:#0437F2;border:1.5px solid #0437F2;'
-                    :             'background:#0437F2;color:#fff;border:none;';
-  const shareDisabled = isPending ? 'disabled' : '';
   return `
-    <div style="font-family:Syne,sans-serif;min-width:200px">
-      <b style="font-size:.88rem;color:#0437F2">🏃 ${stats.name}</b><br/>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#aaa;margin-top:4px">
-        ${fmtDist(stats.distance)} · ↑${Math.round(stats.elevation||0)}m · ${fmtTime(stats.movingTime)}
+    <div style="font-family:Syne,sans-serif;min-width:190px">
+      <b style="font-size:.88rem;color:#0437F2">🏃 ${stats.name || stats.name}</b><br/>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#aaa;margin-top:5px">
+        ${fmtDist(stats.distance || 0)} · ↑${Math.round(stats.elevation||0)}m · ${fmtTime(stats.movingTime || stats.time || 0)}
       </div>
-      <button onclick="if(!this.disabled)toggleStravaShare()" ${shareDisabled}
-        style="margin-top:8px;width:100%;padding:7px 10px;border-radius:7px;
-               font-family:Syne,sans-serif;font-weight:700;font-size:.78rem;
-               cursor:pointer;transition:all .2s;${shareStyle}">
-        ${shareLabel}
-      </button>
     </div>`;
 }
 
@@ -725,7 +735,6 @@ async function toggleStravaShare() {
 
   if (isShared) {
     await LiveTrack.unpublishStrava();
-    updateStravaShareBtn(false);
     showToast('Strava route un-shared');
   } else {
     if (!state.stravaStats || !state.stravaStats.latlngs) {
@@ -741,33 +750,31 @@ async function toggleStravaShare() {
       updateStravaShareBtn(true);
       showToast('📡 Strava route shared with observers');
     } else {
-      updateStravaShareBtn(false);
-      showToast('Share failed — check Firebase rules');
+        showToast('Share failed — check Firebase rules');
     }
   }
 }
 
-function updateStravaShareBtn(shared) {
-  // Always update global state first so buildStravaPopup reads the right value
-  window._stravaShared = shared;
-  // Rebuild popup content if it's currently open
-  if (state.stravaPolyline && state.stravaPolyline.isPopupOpen()) {
-    state.stravaPolyline.setPopupContent(buildStravaPopup(state.stravaStats, shared));
-  }
-}
+// updateStravaShareBtn removed — share state handled by activity card buttons
 
 // ── Observer: receive shared Strava route from Firebase ───────────
 const sharedStravaState = { polylines: [] };
 
 function startStravaObserver() {
-  // subscribeStrava now delivers an array of activities
   LiveTrack.subscribeStrava(activities => {
-    // Remove all existing observer polylines
+    // Remove old polylines
     sharedStravaState.polylines = sharedStravaState.polylines || [];
     sharedStravaState.polylines.forEach(p => state.map.removeLayer(p));
     sharedStravaState.polylines = [];
 
-    if (!activities || !activities.length) return;
+    // Store for Stats + Compare tabs (accessible by all users incl. observers)
+    state.sharedActivities = activities || [];
+
+    if (!activities || !activities.length) {
+      updateStatsTab();
+      updateCompareTab();
+      return;
+    }
 
     activities.forEach(data => {
       if (!data.latlngs || !data.latlngs.length) return;
@@ -775,15 +782,11 @@ function startStravaObserver() {
         color: '#0437F2', weight: 4, opacity: 0.88, dashArray: '7 4', lineJoin: 'round',
       }).addTo(state.map);
       const name = data.name || 'Strava Activity';
-      pl.bindPopup(
-        `<b style="color:#0437F2">📡 ${name}</b><br/>` +
-        `${fmtDist(data.distance)} · ↑${Math.round(data.elevation||0)}m · ${fmtTime(data.time)}<br/>` +
-        `<small style="color:#888">Shared by hiker · P-11.50</small>`
-      );
+      pl.bindPopup(buildStravaPopup({ name, distance: data.distance, elevation: data.elevation, movingTime: data.time }));
       sharedStravaState.polylines.push(pl);
     });
 
-    // Toast only when activities list changes
+    // Toast only when list changes
     const newKey = activities.map(a => a.ts).sort().join(',');
     const prev   = localStorage.getItem('tm_strava_obs_key');
     if (prev !== newKey) {
@@ -791,6 +794,10 @@ function startStravaObserver() {
       if (activities.length === 1) showToast(`📡 Hiker shared: ${activities[0].name}`);
       else if (activities.length > 1) showToast(`📡 Hiker shared ${activities.length} routes`);
     }
+
+    // Refresh Stats + Compare with new data
+    updateStatsTab();
+    updateCompareTab();
   });
 }
 
@@ -813,11 +820,12 @@ function startPhotoObserver() {
         iconSize: [48, 56], iconAnchor: [24, 56], popupAnchor: [0, -58],
       });
       const marker = L.marker([p.lat, p.lon], { icon, zIndexOffset: 490 }).addTo(state.map);
+      // Use note as title if set, otherwise filename
+      const obsTitle = p.note || p.name;
       marker.bindPopup(`
         <div style="font-family:Syne,sans-serif;min-width:180px">
           <img src="${p.thumb}" style="width:100%;border-radius:6px;margin-bottom:6px;display:block"/>
-          <b style="font-size:.85rem">${p.name}</b>
-          ${p.note ? `<div style="font-size:.76rem;color:#ccc;margin-top:4px">${p.note}</div>` : ''}
+          <b style="font-size:.85rem">${obsTitle}</b>
           <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#666;margin-top:4px">
             ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
           </div>
@@ -895,7 +903,7 @@ function renderPhotoList(photos) {
     el.innerHTML = `
       <img class="photo-thumb" src="${p.thumb}" alt="${p.name}" />
       <div class="photo-item-info">
-        <div class="photo-item-name">${p.name}</div>
+        <div class="photo-item-name">${p.note || p.name}</div>
         <div class="photo-item-meta">${dtStr ? dtStr + ' · ' : ''}${coordStr}</div>
         ${p.note ? `<div class="photo-item-note">${p.note}</div>` : ''}
       </div>
@@ -912,8 +920,91 @@ function renderPhotoList(photos) {
 const HIKE_START = new Date(2026, 4, 9, 9, 0, 0); // 9 May 2026 09:00
 
 function updateStatsTab() {
-  const acts  = state.stravaActivities;
+  // Use SHARED activities (visible to all — hiker + observers)
+  const acts  = state.sharedActivities || [];
   const route = state.loadedRoutes.length ? state.loadedRoutes[0] : null;
+
+  const statsBlock  = $('stravaStatsBlock');
+  const noStravaMsg = $('statsNoStrava');
+
+  if (!acts.length) {
+    if (statsBlock)  statsBlock.classList.add('hidden');
+    if (noStravaMsg) noStravaMsg.classList.remove('hidden');
+    $('completionBlock').classList.add('hidden');
+    return;
+  }
+  if (statsBlock)  statsBlock.classList.remove('hidden');
+  if (noStravaMsg) noStravaMsg.classList.add('hidden');
+
+  const n         = acts.length;
+  // Shared activities from Firebase have: distance, elevation, time (movingTime)
+  const totalDist = acts.reduce((s,a) => s + (a.distance||0), 0);
+  const totalElev = acts.reduce((s,a) => s + (a.elevation||a.total_elevation_gain||0), 0);
+  const totalTime = acts.reduce((s,a) => s + (a.time||a.moving_time||0), 0);
+
+  const avgDist  = totalDist / n;
+  const avgElev  = totalElev / n;
+  const avgTime  = totalTime / n;
+  const avgSpeed = avgDist > 0 && avgTime > 0 ? (avgDist / avgTime) * 3.6 : 0;
+  const avgPace  = avgTime > 0 && avgDist > 0 ? (avgTime / 60) / (avgDist / 1000) : 0;
+
+  $('sAvgDist').textContent       = fmtDist(avgDist);
+  $('sAvgElev').textContent       = `↑${Math.round(avgElev)} m`;
+  $('sAvgTime').textContent       = fmtTime(Math.round(avgTime));
+  $('sAvgSpeed').textContent      = avgSpeed.toFixed(1);
+  $('sAvgPace').textContent       = avgPace > 0
+    ? `${Math.floor(avgPace)}:${String(Math.round((avgPace%1)*60)).padStart(2,'0')} /km` : '—';
+  $('sActivityCount').textContent = `${n} shared activit${n===1?'y':'ies'}`;
+  $('sTotalDist').textContent     = fmtDist(totalDist);
+  $('sTotalElev').textContent     = `↑${Math.round(totalElev)} m`;
+  $('sTotalTime').textContent     = fmtTime(totalTime);
+
+  // ── Completion vs pre-loaded route ───────────────────────────
+  const compBlock = $('completionBlock');
+  if (!route) { compBlock.classList.add('hidden'); return; }
+  compBlock.classList.remove('hidden');
+
+  const routeDist = route.stats.distance;
+  const routeElev = route.stats.elevation;
+  const pctDist   = Math.min(100, (totalDist / routeDist) * 100);
+  const pctElev   = Math.min(100, (totalElev / routeElev) * 100);
+  const pctBlend  = pctDist * 0.6 + pctElev * 0.4;
+
+  $('compRouteName').textContent = route.name;
+  $('compPctDist').textContent   = pctDist.toFixed(1) + '%';
+  $('compPctElev').textContent   = pctElev.toFixed(1) + '%';
+  $('compPctBlend').textContent  = pctBlend.toFixed(1) + '%';
+  const bar = $('compProgressBar');
+  if (bar) bar.style.width = Math.min(100, pctBlend).toFixed(1) + '%';
+
+  // Planned finish from last waypoint date
+  const wps = (() => {
+    const pr = (typeof PRELOADED_ROUTES !== 'undefined')
+      ? PRELOADED_ROUTES.find(r => r.id === route.id) : null;
+    return pr ? pr.waypoints : [];
+  })();
+  const lastWp      = [...wps].reverse().find(w => w.date);
+  const planned     = lastWp ? new Date(lastWp.date + 'T12:00:00') : null;
+  const remaining   = Math.max(0, routeDist - totalDist);
+
+  if (remaining <= 0) {
+    $('compFinishEst').textContent    = '🎉 Route complete!';
+    $('compFinishDetail').textContent = '';
+  } else if (planned) {
+    $('compFinishEst').textContent = planned.toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' });
+    const daysLeft = Math.max(0, (planned.getTime() - Date.now()) / 86400000);
+    const remKm    = (remaining / 1000).toFixed(0);
+    if (daysLeft < 1) {
+      $('compFinishDetail').textContent = `${remKm} km remaining · finish day reached`;
+    } else {
+      $('compFinishDetail').textContent =
+        `${remKm} km left · ${Math.ceil(daysLeft)} days · need ${(remaining/1000/daysLeft).toFixed(1)} km/day`;
+    }
+  } else {
+    $('compFinishEst').textContent    = '—';
+    $('compFinishDetail').textContent = 'No planned finish date';
+  }
+}
 
   const statsBlock  = $('stravaStatsBlock');
   const noStravaMsg = $('statsNoStrava');
@@ -980,42 +1071,6 @@ function updateStatsTab() {
   $('compPctBlend').textContent   = pctBlend.toFixed(1) + '%';
   const bar = $('compProgressBar');
   if (bar) bar.style.width = Math.min(100, pctBlend).toFixed(1) + '%';
-
-  // ── Finish date from last waypoint with a date field ──────────
-  const wps = (() => {
-    const pr = (typeof PRELOADED_ROUTES !== 'undefined')
-      ? PRELOADED_ROUTES.find(r => r.id === route.id) : null;
-    return pr ? pr.waypoints : [];
-  })();
-  const lastWpWithDate = [...wps].reverse().find(w => w.date);
-  const plannedFinish  = lastWpWithDate ? new Date(lastWpWithDate.date + 'T12:00:00') : null;
-  const remaining      = Math.max(0, routeDist - routeTotalDist);
-
-  if (remaining <= 0) {
-    $('compFinishEst').textContent    = '🎉 Route complete!';
-    $('compFinishDetail').textContent = '';
-  } else if (plannedFinish) {
-    const opts     = { day: 'numeric', month: 'short', year: 'numeric' };
-    $('compFinishEst').textContent = plannedFinish.toLocaleDateString(undefined, opts);
-    const daysLeft     = Math.max(0, (plannedFinish.getTime() - Date.now()) / 86400000);
-    const remKm        = (remaining / 1000).toFixed(0);
-    if (daysLeft < 1) {
-      $('compFinishDetail').textContent = `${remKm} km remaining · finish day reached`;
-    } else {
-      const neededPerDay = (remaining / 1000 / daysLeft).toFixed(1);
-      $('compFinishDetail').textContent =
-        `${remKm} km left · ${Math.ceil(daysLeft)} days · need ${neededPerDay} km/day`;
-    }
-  } else if (avgDist > 0) {
-    const daysNeeded = remaining / avgDist;
-    const finishDate = new Date(Date.now() + daysNeeded * 86400000);
-    $('compFinishEst').textContent    = finishDate.toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' });
-    $('compFinishDetail').textContent = `${(remaining/1000).toFixed(0)} km left · ~${daysNeeded.toFixed(1)} days at avg pace`;
-  } else {
-    $('compFinishEst').textContent    = '—';
-    $('compFinishDetail').textContent = 'Load Strava activities to estimate';
-  }
-}
 
 
 // ── Wake Lock — keeps screen on while GPS/sharing is active ──────
