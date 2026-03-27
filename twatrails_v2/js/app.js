@@ -43,7 +43,6 @@ const $ = id => document.getElementById(id);
     renderPreloadedRoutes();
     initStravaUI(callbackResult);
     restoreStravaConfig();
-    initRecorderUI();
     initWaypointsUI();
     ElevationChart.init($('elevCanvas'));
     initLiveTrack();
@@ -71,7 +70,6 @@ function initMap() {
   );
   state.layers.topo.addTo(state.map);
 
-  Recorder.init(state.map);
   Waypoints.init(state.map);
   Geocoder.init(state.map);
   Photos.init(state.map);
@@ -301,20 +299,16 @@ function initWaypointsUI() {
   btn.addEventListener('click', () => {
     const active = Waypoints.getAddMode(); Waypoints.setAddMode(!active);
     $('pinModeNote').classList.toggle('hidden', active);
-    btn.textContent = active ? '📌 Drop Pin' : '✕ Cancel';
+    btn.textContent = active ? '📌 Drop Note' : '✕ Cancel';
     btn.style.borderColor = active ? '' : 'var(--blue)';
     btn.style.color       = active ? '' : 'var(--blue)';
   });
   Waypoints.onChange(pins => {
     renderCustomPins(pins);
     $('pinModeNote').classList.add('hidden');
-    btn.textContent = '📌 Drop Pin'; btn.style.borderColor=''; btn.style.color='';
+    btn.textContent = '📌 Drop Note'; btn.style.borderColor=''; btn.style.color='';
   });
-  $('btnExportPins').addEventListener('click', () => {
-    const gpx = Waypoints.exportGPX(); if (!gpx) { showToast('No pins to export'); return; }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([gpx],{type:'application/gpx+xml'}));
-    a.download='trailmate-pins.gpx'; a.click(); showToast('Pins exported ✓');
-  });
+  $('btnExportPins').addEventListener('click', exportPinsExcel);
 }
 
 function renderRouteWaypoints(waypoints) {
@@ -338,10 +332,29 @@ function renderCustomPins(pins) {
   noMsg.classList.add('hidden'); exp.classList.remove('hidden');
   pins.forEach(pin => {
     const el=document.createElement('div'); el.className='waypoint-item';
-    el.innerHTML=`<div class="waypoint-icon">📍</div><div class="waypoint-info"><div class="waypoint-name">${pin.name}</div>${pin.note?`<div class="waypoint-note">${pin.note}</div>`:''}</div><div class="waypoint-actions"><button onclick="Waypoints.remove(${pin.id});renderCustomPins(Waypoints.getCustom())" title="Remove">✕</button></div>`;
+    const dateStr = pin.date ? new Date(pin.date).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}) : '';
+    el.innerHTML=`<div class="waypoint-icon">📍</div><div class="waypoint-info"><div class="waypoint-name">${pin.name}</div>${pin.note?`<div class="waypoint-note">${pin.note}</div>`:''}<div class="waypoint-note" style="color:var(--text3)">${dateStr}</div></div><div class="waypoint-actions"><button onclick="Waypoints.remove(${pin.id});renderCustomPins(Waypoints.getCustom())" title="Remove">✕</button></div>`;
     el.addEventListener('click', e => { if(e.target.tagName==='BUTTON') return; state.map.setView([pin.lat,pin.lon],16,{animate:true}); });
     list.appendChild(el);
   });
+}
+
+function exportPinsExcel() {
+  const pins = Waypoints.getCustom();
+  if (!pins.length) { showToast('No notes to export'); return; }
+  // Build CSV (opens in Excel)
+  const rows = [['Date','Latitude','Longitude','Name','Notes']];
+  pins.forEach(p => {
+    const d = p.date ? new Date(p.date).toLocaleDateString() : '';
+    rows.push([d, p.lat.toFixed(6), p.lon.toFixed(6), p.name, p.note||'']);
+  });
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob), download: 'notes.csv'
+  });
+  a.click(); URL.revokeObjectURL(a.href);
+  showToast('Notes exported ✓');
 }
 
 // ── GPS + Off-route ───────────────────────────────────────────

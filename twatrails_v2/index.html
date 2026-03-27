@@ -387,6 +387,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .comp-finish-date{font-family:var(--mono);font-size:.95rem;color:var(--text);font-weight:600}
 .comp-finish-detail{font-size:.68rem;color:var(--text2);margin-top:2px;line-height:1.4}
 .sactivity-count{font-family:var(--mono);font-size:.64rem;color:var(--text3);text-align:right;margin-bottom:4px}
+
+/* ── Language selector ── */
+.lang-select{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.lang-btn{background:none;border:none;cursor:pointer;padding:2px;border-radius:4px;font-size:1.2rem;opacity:.45;transition:opacity .2s;line-height:1}
+.lang-btn:hover,.lang-btn.active{opacity:1}
+.lang-btn.active{outline:1.5px solid var(--green);border-radius:4px}
   </style>
 </head>
 <body>
@@ -398,7 +404,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <img src="icon/icon.jpg" alt="P-11.50" />
     </div>
     <h1 class="splash-title">P-11.50</h1>
-    <p class="splash-sub">GPX · GPS · Strava</p>
+    <p class="splash-sub">Life is GOOD!</p>
 
     <!-- Countdown -->
     <div class="countdown-wrap">
@@ -412,7 +418,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div class="cd-sep">:</div>
         <div class="cd-unit"><span class="cd-val" id="cdSecs">--</span><span class="cd-lbl">sec</span></div>
       </div>
-      <div class="countdown-date">9 May 2026 · 09:00</div>
+      <div class="countdown-date">16 May 2026 · 09:00</div>
     </div>
 
     <button id="splashEnter" class="btn-primary">Open App</button>
@@ -438,6 +444,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div id="recIndicator" class="rec-indicator hidden">
         <span class="rec-dot"></span>
         <span id="recElapsedBadge" class="rec-time">0:00</span>
+      </div>
+      <div class="lang-select" id="langSelect">
+        <button class="lang-btn active" data-lang="en" title="English" onclick="setLang('en')">🇬🇧</button>
+        <button class="lang-btn" data-lang="es" title="Español" onclick="setLang('es')">🇪🇸</button>
+        <button class="lang-btn" data-lang="ca" title="Català" onclick="setLang('ca')">🏴</button>
       </div>
       <div id="gpsStatus" class="gps-badge gps-off">
         <span class="gps-dot"></span>
@@ -465,8 +476,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <button class="tab-btn" data-tab="live">
         <span class="tab-live-dot hidden" id="tabLiveDot"></span>Live
       </button>
-      <button class="tab-btn" data-tab="pins">Pins</button>
-      <button class="tab-btn" data-tab="record">Record</button>
+      <button class="tab-btn" data-tab="pins">Waypoint</button>
+      <button class="tab-btn" data-tab="notes">Notes</button>
       <button class="tab-btn" data-tab="strava">Hiker</button>
       <button class="tab-btn" data-tab="compare">Compare</button>
       <button class="tab-btn" data-tab="stats">Stats</button>
@@ -485,7 +496,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div class="section-label" style="margin-top:10px">Active on Map</div>
         <div id="routeList" class="route-list"></div>
       </div>
-      <button id="btnGPS" class="btn-gps-track">📍 Track My Position</button>
     </div>
 
     <!-- LIVE TRACKING -->
@@ -500,6 +510,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
             <span id="liveHikerStatusText">Not sharing</span>
           </div>
           <div class="live-hiker-hint" id="liveHikerHint">Enable GPS tracking first, then start sharing.</div>
+          <button id="btnGPS" class="btn-gps-track" style="margin-bottom:8px">📍 Track My Position</button>
           <button id="btnLiveShare" class="btn-live-share">📡 Start Sharing Location</button>
         </div>
       </div>
@@ -522,64 +533,34 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       </div>
 
     </div><!-- /tab-live -->
+    <!-- WAYPOINT -->
     <div class="tab-pane" id="tab-pins">
-      <div class="section-header">
-        <span class="section-label">Waypoints</span>
-        <button id="btnAddPin" class="upload-btn-small">📌 Drop Pin</button>
-      </div>
-      <div id="pinModeNote" class="pin-mode-note hidden">Tap anywhere on the map to place a pin</div>
       <div id="routeWaypointsSection" class="hidden">
         <div class="section-label">Route Waypoints</div>
         <div id="routeWaypointList" class="waypoint-list"></div>
       </div>
-      <div id="customPinsSection">
-        <div id="customPinList" class="waypoint-list"></div>
-        <div id="noPinsMsg" class="empty-state" style="padding:16px 0">
-          <div class="empty-icon">📍</div>
-          <p>Tap <strong>Drop Pin</strong> then tap the map to add waypoints.</p>
-        </div>
-      </div>
-      <div id="pinExportRow" class="hidden" style="margin-top:8px">
-        <button id="btnExportPins" class="btn-ghost" style="width:100%">⬇ Export pins as GPX</button>
+      <div class="empty-state" id="noWaypointsMsg" style="padding:20px 0">
+        <div class="empty-icon">🗺</div>
+        <p>Load a <strong>pre-loaded route</strong> to see its waypoints here.</p>
       </div>
     </div>
 
-    <!-- RECORD -->
-    <div class="tab-pane" id="tab-record">
-      <div id="recReady">
-        <div class="rec-status-row">
-          <div class="rec-status-icon">⏺</div>
-          <div>
-            <div class="rec-status-title">Record a Track</div>
-            <div class="rec-status-sub">Enable GPS tracking first, then start.</div>
-          </div>
-        </div>
-        <div class="rec-platform-note">
-          <div class="rec-note-row"><span class="rec-note-icon">🤖</span><span><strong>Android:</strong> GPS records in the background — you can turn the screen off freely.</span></div>
-          <div class="rec-note-row"><span class="rec-note-icon">🍎</span><span><strong>iOS:</strong> Keep the app open and screen on. If the screen turns off, gaps are saved as separate track segments in the GPX.</span></div>
-        </div>
-        <button id="btnRecStart" class="btn-rec-start">Start Recording</button>
+    <!-- NOTES -->
+    <div class="tab-pane" id="tab-notes">
+      <div class="section-header">
+        <span class="section-label">Notes</span>
+        <button id="btnAddPin" class="upload-btn-small">📌 Drop Note</button>
       </div>
-      <div id="recActive" class="hidden">
-        <div class="rec-live-grid">
-          <div class="rec-live-stat"><div class="rec-live-val" id="recDist">0.00</div><div class="rec-live-lbl">km</div></div>
-          <div class="rec-live-stat"><div class="rec-live-val" id="recTime">0:00</div><div class="rec-live-lbl">elapsed</div></div>
-          <div class="rec-live-stat"><div class="rec-live-val" id="recSpeed">0.0</div><div class="rec-live-lbl">km/h avg</div></div>
-          <div class="rec-live-stat"><div class="rec-live-val" id="recGain">0</div><div class="rec-live-lbl">m gain</div></div>
-        </div>
-        <div id="recSegments" class="rec-segments-badge" style="display:none"></div>
-        <div class="rec-action-row">
-          <button id="btnRecStop" class="btn-rec-stop">⏹ Stop</button>
-          <button id="btnRecFit" class="btn-ghost">🎯 Fit</button>
+      <div id="pinModeNote" class="pin-mode-note hidden">Tap anywhere on the map to place a note</div>
+      <div id="customPinsSection">
+        <div id="customPinList" class="waypoint-list"></div>
+        <div id="noPinsMsg" class="empty-state" style="padding:16px 0">
+          <div class="empty-icon">📝</div>
+          <p>Tap <strong>Drop Note</strong> then tap the map to add a note.</p>
         </div>
       </div>
-      <div id="recDone" class="hidden">
-        <div class="rec-done-header">Track recorded ✓</div>
-        <div id="recSummary" class="rec-summary-grid"></div>
-        <div class="rec-action-row" style="margin-top:10px">
-          <button id="btnRecDownload" class="btn-primary">⬇ Export GPX</button>
-          <button id="btnRecDiscard" class="btn-ghost danger">Discard</button>
-        </div>
+      <div id="pinExportRow" class="hidden" style="margin-top:8px">
+        <button id="btnExportPins" class="btn-ghost" style="width:100%">⬇ Export Notes (Excel)</button>
       </div>
     </div>
 
@@ -748,7 +729,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 /* ── Splash countdown to 9 May 2026 09:00 local time ── */
 (function() {
   // Target: 9 May 2026 at 09:00 in the user's local timezone
-  const TARGET = new Date(2026, 4, 9, 9, 0, 0); // month is 0-indexed: 4 = May
+  const TARGET = new Date(2026, 4, 16, 9, 0, 0); // month is 0-indexed: 4 = May
 
   const dEl = document.getElementById('cdDays');
   const hEl = document.getElementById('cdHours');
@@ -783,5 +764,144 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   setInterval(tick, 1000);
 })();
 </script>
+
+<script>
+/* ── Language / i18n ── */
+const LANG = {
+  en: {
+    openApp:'Open App', searchPlace:'Search place…',
+    tabRoutes:'Routes', tabLive:'Live', tabWaypoint:'Waypoint',
+    tabNotes:'Notes', tabHiker:'Hiker', tabCompare:'Compare',
+    tabStats:'Stats', tabPhotos:'📷 Photos',
+    trackPos:'📍 Track My Position', startSharing:'📡 Start Sharing Location',
+    stopSharing:'⏹ Stop Sharing', dropNote:'📌 Drop Note', cancelNote:'✕ Cancel',
+    exportNotes:'⬇ Export Notes (Excel)', noNotes:'Tap Drop Note then tap the map to add a note.',
+    noWaypoints:'Load a pre-loaded route to see its waypoints here.',
+    uploadGpx:'+ Upload GPX', preloadedTrails:'Pre-loaded Trails',
+    activeOnMap:'Active on Map', iAmHiker:'I am the hiker', notSharing:'Not sharing',
+    enableGPSFirst:'Enable GPS tracking first, then start sharing.',
+    hikerPosition:'Hiker position', status:'STATUS', lastUpdate:'LAST UPDATE',
+    altitude:'ALTITUDE', speed:'SPEED', accuracy:'ACCURACY',
+    jumpToHiker:'🎯 Jump to hiker on map',
+    sharedActivitiesAvg:'Shared Activities — Averages',
+    connectStrava:'Share Strava activities with observers to see averages here.',
+    startIn:'Start in', lifeIsGood:'Life is GOOD!',
+  },
+  es: {
+    openApp:'Abrir App', searchPlace:'Buscar lugar…',
+    tabRoutes:'Rutas', tabLive:'En Vivo', tabWaypoint:'Puntos',
+    tabNotes:'Notas', tabHiker:'Excursionista', tabCompare:'Comparar',
+    tabStats:'Stats', tabPhotos:'📷 Fotos',
+    trackPos:'📍 Rastrear Posición', startSharing:'📡 Compartir Ubicación',
+    stopSharing:'⏹ Parar', dropNote:'📌 Añadir Nota', cancelNote:'✕ Cancelar',
+    exportNotes:'⬇ Exportar Notas (Excel)', noNotes:'Pulsa Añadir Nota y toca el mapa.',
+    noWaypoints:'Carga una ruta para ver sus puntos.',
+    uploadGpx:'+ Subir GPX', preloadedTrails:'Rutas Precargadas',
+    activeOnMap:'Activo en Mapa', iAmHiker:'Soy el excursionista', notSharing:'No compartiendo',
+    enableGPSFirst:'Activa el GPS primero, luego empieza a compartir.',
+    hikerPosition:'Posición del excursionista', status:'ESTADO', lastUpdate:'ÚLTIMA ACTUALIZACIÓN',
+    altitude:'ALTITUD', speed:'VELOCIDAD', accuracy:'PRECISIÓN',
+    jumpToHiker:'🎯 Ir al excursionista',
+    sharedActivitiesAvg:'Actividades Compartidas — Promedios',
+    connectStrava:'Comparte actividades de Strava para ver promedios.',
+    startIn:'Empieza en', lifeIsGood:'¡La vida es BUENA!',
+  },
+  ca: {
+    openApp:'Obrir App', searchPlace:'Cerca un lloc…',
+    tabRoutes:'Rutes', tabLive:'En Viu', tabWaypoint:'Punts',
+    tabNotes:'Notes', tabHiker:'Excursionista', tabCompare:'Comparar',
+    tabStats:'Stats', tabPhotos:'📷 Fotos',
+    trackPos:'📍 Rastrejar Posició', startSharing:'📡 Compartir Ubicació',
+    stopSharing:'⏹ Parar', dropNote:'📌 Afegir Nota', cancelNote:'✕ Cancel·lar',
+    exportNotes:'⬇ Exportar Notes (Excel)', noNotes:'Prem Afegir Nota i toca el mapa.',
+    noWaypoints:'Carrega una ruta per veure els seus punts.',
+    uploadGpx:'+ Pujar GPX', preloadedTrails:'Rutes Precàrregades',
+    activeOnMap:'Actiu al Mapa', iAmHiker:'Sóc l'excursionista', notSharing:'No compartint',
+    enableGPSFirst:'Activa el GPS primer, després comença a compartir.',
+    hikerPosition:'Posició de l'excursionista', status:'ESTAT', lastUpdate:'ÚLTIMA ACTUALITZACIÓ',
+    altitude:'ALTITUD', speed:'VELOCITAT', accuracy:'PRECISIÓ',
+    jumpToHiker:'🎯 Anar a l'excursionista',
+    sharedActivitiesAvg:'Activitats Compartides — Mitjanes',
+    connectStrava:'Comparteix activitats de Strava per veure mitjanes.',
+    startIn:'Comença en', lifeIsGood:'La vida és BONA!',
+  }
+};
+
+let _currentLang = localStorage.getItem('p1150_lang') || 'en';
+
+function setLang(lang) {
+  _currentLang = lang;
+  localStorage.setItem('p1150_lang', lang);
+  const L = LANG[lang];
+  // Update lang buttons
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+
+  // Splash
+  const sub = document.querySelector('.splash-sub');
+  if (sub) sub.textContent = L.lifeIsGood;
+  const openBtn = document.getElementById('splashEnter');
+  if (openBtn) openBtn.textContent = L.openApp;
+  const cdLabel = document.querySelector('.countdown-label');
+  if (cdLabel) cdLabel.textContent = L.startIn;
+
+  // Search
+  const si = document.getElementById('searchInput');
+  if (si) si.placeholder = L.searchPlace;
+
+  // Tab buttons
+  const tabMap = {routes:L.tabRoutes, live:L.tabLive, pins:L.tabWaypoint,
+                  notes:L.tabNotes, strava:L.tabHiker, compare:L.tabCompare,
+                  stats:L.tabStats, photos:L.tabPhotos};
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(b => {
+    if (tabMap[b.dataset.tab]) b.childNodes[b.childNodes.length-1].textContent = ' ' + tabMap[b.dataset.tab];
+  });
+
+  // GPS + Live buttons
+  const gpsBtn = document.getElementById('btnGPS');
+  if (gpsBtn) gpsBtn.textContent = L.trackPos;
+  const liveBtn = document.getElementById('btnLiveShare');
+  if (liveBtn && liveBtn.textContent.trim().startsWith('📡')) liveBtn.textContent = L.startSharing;
+
+  // Notes tab
+  const dropBtn = document.getElementById('btnAddPin');
+  if (dropBtn && !dropBtn.classList.contains('active')) dropBtn.textContent = L.dropNote;
+  const exportBtn = document.getElementById('btnExportPins');
+  if (exportBtn) exportBtn.textContent = L.exportNotes;
+  const noPins = document.getElementById('noPinsMsg');
+  if (noPins) noPins.querySelector('p').innerHTML = L.noNotes;
+  const noWp = document.getElementById('noWaypointsMsg');
+  if (noWp) noWp.querySelector('p').innerHTML = L.noWaypoints;
+
+  // Hiker position labels
+  const labelMap = {liveStatus: L.status, liveLastUpdate: L.lastUpdate,
+                    liveAlt: L.altitude, liveSpeed: L.speed, liveAcc: L.accuracy};
+  // Section labels
+  document.querySelectorAll('.section-label').forEach(el => {
+    const txt = el.textContent.trim();
+    if (txt === 'I am the hiker' || txt === 'Soy el excursionista' || txt === "Sóc l'excursionista") el.textContent = L.iAmHiker;
+    if (txt === 'Hiker position' || txt === 'Posición del excursionista' || txt === "Posició de l'excursionista") el.textContent = L.hikerPosition;
+    if (txt === 'Pre-loaded Trails' || txt === 'Rutas Precargadas' || txt === 'Rutes Precàrregades') el.textContent = L.preloadedTrails;
+    if (txt === 'Active on Map' || txt === 'Activo en Mapa' || txt === 'Actiu al Mapa') el.textContent = L.activeOnMap;
+    if (txt === 'Shared Activities — Averages' || txt === 'Actividades Compartidas — Promedios' || txt === 'Activitats Compartides — Mitjanes') el.textContent = L.sharedActivitiesAvg;
+  });
+
+  // Stats no-strava msg
+  const ns = document.getElementById('statsNoStrava');
+  if (ns) ns.textContent = L.connectStrava;
+
+  // Jump to hiker
+  const jh = document.getElementById('btnJumpToHiker');
+  if (jh) jh.textContent = L.jumpToHiker;
+}
+
+// Apply saved language on load
+document.addEventListener('DOMContentLoaded', () => setLang(_currentLang));
+// Also apply after splash is dismissed (DOM elements may not exist yet)
+const _origSplash = document.getElementById('splashEnter');
+if (_origSplash) {
+  _origSplash.addEventListener('click', () => setTimeout(() => setLang(_currentLang), 300));
+}
+</script>
+
 </body>
 </html>
