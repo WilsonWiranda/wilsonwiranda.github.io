@@ -210,22 +210,28 @@ const LiveTrack = (() => {
         }
       }
 
-      // Add / update each photo individually
+      // Add / update each photo individually using shareThumb (~20KB)
+      // shareThumb is a small 200px version safe for Firebase Realtime DB
       for (const p of photos) {
-        const id = String(p.id);
-        await photosRef.child(id).set({
-          lat:      parseFloat(p.lat.toFixed(6)),
-          lon:      parseFloat(p.lon.toFixed(6)),
-          name:     p.name     || '',
-          note:     p.note     || '',
-          thumb:    p.thumb    || '',   // base64 JPEG — ~300KB per photo
-          datetime: p.datetime || '',
-          ts:       Date.now(),
-        });
-        _publishedPhotoIds.add(id);
+        const id    = String(p.id);
+        const thumb = p.shareThumb || p.thumb || ''; // prefer small version
+        try {
+          await photosRef.child(id).set({
+            lat:      parseFloat(p.lat.toFixed(6)),
+            lon:      parseFloat(p.lon.toFixed(6)),
+            name:     p.name     || '',
+            note:     p.note     || '',
+            thumb,
+            datetime: p.datetime || '',
+            ts:       Date.now(),
+          });
+          _publishedPhotoIds.add(id);
+        } catch (writeErr) {
+          console.error('[LiveTrack] Photo write failed for id', id, ':', writeErr.message, writeErr.code);
+        }
       }
     } catch (e) {
-      console.warn('[LiveTrack] Photos publish failed:', e.message);
+      console.error('[LiveTrack] Photos publish outer error:', e.message);
     }
   }
 

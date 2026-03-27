@@ -162,13 +162,15 @@ const Photos = (() => {
   }
 
   // ── Add photo to map ──────────────────────────────────────
-  function addPhoto(lat, lon, thumb, name, note, datetime, id) {
+  function addPhoto(lat, lon, thumb, name, note, datetime, id, shareThumb) {
     const marker = L.marker([lat, lon], { icon: makePhotoIcon(thumb), zIndexOffset: 500 })
       .addTo(map);
 
     marker.bindPopup(() => buildPopup(id), { maxWidth: 220 });
 
-    const entry = { id, marker, thumb, name, note, lat, lon, datetime };
+    // shareThumb is a small 200px JPEG for Firebase (~20KB)
+    // thumb is the full 800px version for local display only
+    const entry = { id, marker, thumb, shareThumb: shareThumb || thumb, name, note, lat, lon, datetime };
     photos.push(entry);
     marker.on('click', () => {
       // Rebuild popup content each time (note may have changed)
@@ -231,9 +233,18 @@ const Photos = (() => {
             canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
             const thumb = canvas.toDataURL('image/jpeg', 0.85);
 
+            // Also generate a small share thumb (~20KB) for Firebase
+            // Firebase Realtime DB nodes can silently fail if too large
+            const shareCanvas = document.createElement('canvas');
+            const shareScale  = Math.min(1, 200 / Math.max(img.width, img.height));
+            shareCanvas.width  = Math.round(img.width  * shareScale);
+            shareCanvas.height = Math.round(img.height * shareScale);
+            shareCanvas.getContext('2d').drawImage(img, 0, 0, shareCanvas.width, shareCanvas.height);
+            const shareThumb = shareCanvas.toDataURL('image/jpeg', 0.6);
+
             const id    = Date.now() + Math.random();
             const name  = file.name.replace(/\.[^.]+$/, '');
-            const entry = addPhoto(exif.lat, exif.lon, thumb, name, note, exif.datetime, id);
+            const entry = addPhoto(exif.lat, exif.lon, thumb, name, note, exif.datetime, id, shareThumb);
             map.setView([exif.lat, exif.lon], 16, { animate: true });
             resolve(entry);
           };

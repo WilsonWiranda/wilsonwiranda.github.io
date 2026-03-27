@@ -814,7 +814,7 @@ function startPhotoObserver() {
       const icon = L.divIcon({
         className: '',
         html: `<div class="photo-marker">
-                 <div class="photo-marker-img" style="background-image:url('${p.thumb}')"></div>
+                 <div class="photo-marker-img" style="background-image:url('${p.thumb || p.shareThumb}')"></div>
                  <div class="photo-marker-tip"></div>
                </div>`,
         iconSize: [48, 56], iconAnchor: [24, 56], popupAnchor: [0, -58],
@@ -866,7 +866,8 @@ function initPhotosUI() {
     const fab = $('btnTogglePhotos');
     if (fab) fab.classList.toggle('hidden', photos.length === 0);
     // Push to Firebase so observers see the photos too
-    LiveTrack.publishPhotos(photos);
+    LiveTrack.publishPhotos(photos)
+      .catch(e => console.error('[Photos] Firebase publish error:', e.message));
   });
 
   async function handlePhotoFiles(files) {
