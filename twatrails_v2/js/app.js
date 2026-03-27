@@ -1009,69 +1009,6 @@ function updateStatsTab() {
   const statsBlock  = $('stravaStatsBlock');
   const noStravaMsg = $('statsNoStrava');
 
-  if (!acts || acts.length === 0) {
-    if (statsBlock)  statsBlock.classList.add('hidden');
-    if (noStravaMsg) noStravaMsg.classList.remove('hidden');
-    $('completionBlock').classList.add('hidden');
-    return;
-  }
-  if (statsBlock)  statsBlock.classList.remove('hidden');
-  if (noStravaMsg) noStravaMsg.classList.add('hidden');
-
-  const hikes = acts.filter(a => ['Hike','Walk','TrailRun','Run'].includes(a.type));
-  const pool  = hikes.length ? hikes : acts;
-  const n     = pool.length;
-
-  const totalDist = pool.reduce((s,a) => s + (a.distance||0), 0);
-  const totalElev = pool.reduce((s,a) => s + (a.total_elevation_gain||0), 0);
-  const totalTime = pool.reduce((s,a) => s + (a.moving_time||0), 0);
-
-  // For completion: only use activities on/after the route start date
-  // and only when a route is actually loaded
-  const routeStartDate = route ? HIKE_START : null;
-  const routePool = route && routeStartDate
-    ? pool.filter(a => {
-        const d = new Date(a.start_date_local || a.start_date);
-        return d >= routeStartDate;
-      })
-    : pool;
-  const routeTotalDist = routePool.reduce((s,a) => s + (a.distance||0), 0);
-  const routeTotalElev = routePool.reduce((s,a) => s + (a.total_elevation_gain||0), 0);
-
-  const avgDist  = totalDist / n;
-  const avgElev  = totalElev / n;
-  const avgTime  = totalTime / n;
-  const avgSpeed = avgDist > 0 && avgTime > 0 ? (avgDist / avgTime) * 3.6 : 0;
-  const avgPace  = avgTime > 0 && avgDist > 0 ? (avgTime / 60) / (avgDist / 1000) : 0;
-
-  $('sAvgDist').textContent      = fmtDist(avgDist);
-  $('sAvgElev').textContent      = `↑${Math.round(avgElev)} m`;
-  $('sAvgTime').textContent      = fmtTime(Math.round(avgTime));
-  $('sAvgSpeed').textContent     = avgSpeed.toFixed(1);
-  $('sAvgPace').textContent      = avgPace > 0
-    ? `${Math.floor(avgPace)}:${String(Math.round((avgPace % 1) * 60)).padStart(2,'0')} /km` : '—';
-  $('sActivityCount').textContent = `${n} activit${n===1?'y':'ies'} (${pool===hikes?'hike/walk':'all types'})`;
-  $('sTotalDist').textContent    = fmtDist(totalDist);
-  $('sTotalElev').textContent    = `↑${Math.round(totalElev)} m`;
-  $('sTotalTime').textContent    = fmtTime(totalTime);
-
-  const compBlock = $('completionBlock');
-  if (!route) { compBlock.classList.add('hidden'); return; }
-  compBlock.classList.remove('hidden');
-
-  const routeDist = route.stats.distance;
-  const routeElev = route.stats.elevation;
-  const pctDist   = Math.min(100, (routeTotalDist / routeDist) * 100);
-  const pctElev   = Math.min(100, (routeTotalElev / routeElev) * 100);
-  const pctBlend  = pctDist * 0.6 + pctElev * 0.4;
-
-  $('compRouteName').textContent  = route.name;
-  $('compPctDist').textContent    = pctDist.toFixed(1) + '%';
-  $('compPctElev').textContent    = pctElev.toFixed(1) + '%';
-  $('compPctBlend').textContent   = pctBlend.toFixed(1) + '%';
-  const bar = $('compProgressBar');
-  if (bar) bar.style.width = Math.min(100, pctBlend).toFixed(1) + '%';
-
 
 // ── Wake Lock — keeps screen on while GPS/sharing is active ──────
 // Supported: Chrome Android, Safari iOS 16.4+ PWA
