@@ -119,23 +119,48 @@ function applyGuestMode(isGuest) {
 (async function init() {
   const callbackResult = await handleStravaCallback();
 
-  $('splashEnter').addEventListener('click', () => {
+  // Pre-fill email from localStorage
+  const savedEmail  = localStorage.getItem('p1150_user_email');
+  const splashEmail = $('splashEmailInput');
+  if (savedEmail && splashEmail) splashEmail.value = savedEmail;
+
+  const launchApp = () => {
     $('splash').classList.add('hidden');
     $('app').classList.remove('hidden');
-    initUserSystem(() => {
-      applyGuestMode(currentUser.isGuest);
-      initMap();
-      initDragPanel();
-      initFABs();
-      initSearch();
-      renderPreloadedRoutes();
-      initStravaUI(callbackResult);
-      restoreStravaConfig();
-      initWaypointsUI();
-      ElevationChart.init($('elevCanvas'));
-      initLiveTrack();
-      initPhotosUI();
-    });
+    updateUserBadge();
+    applyGuestMode(currentUser.isGuest);
+    initMap(); initDragPanel(); initFABs(); initSearch();
+    renderPreloadedRoutes(); initStravaUI(callbackResult);
+    restoreStravaConfig(); initWaypointsUI();
+    ElevationChart.init($('elevCanvas'));
+    initLiveTrack(); initPhotosUI();
+  };
+
+  $('splashEnter').addEventListener('click', () => {
+    const email = splashEmail ? splashEmail.value.trim() : '';
+    if (email && email.includes('@')) {
+      currentUser.email   = email;
+      currentUser.isGuest = false;
+      localStorage.setItem('p1150_user_email', email);
+    } else if (savedEmail) {
+      currentUser.email   = savedEmail;
+      currentUser.isGuest = false;
+    } else {
+      currentUser.email   = null;
+      currentUser.isGuest = true;
+    }
+    launchApp();
+  });
+
+  if (splashEmail) {
+    splashEmail.addEventListener('keydown', e => { if (e.key === 'Enter') $('splashEnter').click(); });
+  }
+
+  $('splashGuest').addEventListener('click', () => {
+    currentUser.email   = null;
+    currentUser.isGuest = true;
+    localStorage.removeItem('p1150_user_email');
+    launchApp();
   });
 })();
 
@@ -459,7 +484,7 @@ async function toggleNoteShare(pinId) {
     _sharedNoteIds.delete(id);
     showToast('Note un-shared');
   } else {
-    const ok = await LiveTrack.publishNote(pin);
+    const ok = await LiveTrack.publishNote(pin, currentUser.email);
     if (ok) { _sharedNoteIds.add(id); showToast('📡 Note shared'); }
     else showToast('Share failed');
   }
@@ -710,7 +735,7 @@ function loadStreamsOnMap(activity, streams, itemEl) {
   const latlngs = streams.latlng.data;
   const alts    = streams.altitude?.data || [];
   state.stravaPolyline = L.polyline(latlngs, {
-    color:'#0437F2', weight:4, opacity:0.88, dashArray:'7 4', lineJoin:'round'
+    color:'#f97316', weight:4, opacity:0.88, dashArray:'7 4', lineJoin:'round'
   }).addTo(state.map);
   state.stravaPolyline.bindPopup(() => buildStravaPopup(state.stravaStats));
   state.stravaPolyline.on('click', () => {
@@ -744,6 +769,11 @@ function loadStreamsOnMap(activity, streams, itemEl) {
 }
 
 async function loadActivityOnMap(activity, itemEl) {
+  // Toggle off if this activity is already on the map
+  if (state.stravaStats && state.stravaStats.stravaId === activity.id && state.stravaPolyline) {
+    clearStravaOverlay(false);
+    return;
+  }
   document.querySelectorAll('.activity-item').forEach(el => el.classList.remove('active'));
   if (itemEl) itemEl.classList.add('active');
   showToast('Loading GPS stream…');
@@ -768,6 +798,10 @@ async function toggleActivityShare(act, itemEl) {
     btn.disabled     = false;
     btn.classList.remove('shared');
     btn.title        = 'Share with observers';
+    // Revert polyline to orange (loaded but not shared)
+    if (state.stravaPolyline && state.stravaStats?.stravaId === act.id) {
+      state.stravaPolyline.setStyle({ color: '#f97316' });
+    }
     showToast(`${act.name} un-shared`);
   } else {
     // Not shared → load streams then share
@@ -786,13 +820,17 @@ async function toggleActivityShare(act, itemEl) {
       }
       const stats = { stravaId: act.id, name: act.name, distance: act.distance,
                       elevation: act.total_elevation_gain||0, movingTime: act.moving_time, latlngs };
-      const ok = await LiveTrack.publishStrava(latlngs, stats);
+      const ok = await LiveTrack.publishStrava(latlngs, stats, currentUser.email);
       if (ok) {
         state.stravaSharedIds.add(id);
         btn.textContent = '⏹ Unshare';
         btn.disabled    = false;
         btn.classList.add('shared');
         btn.title       = 'Unshare';
+        // Turn polyline blue when shared
+        if (state.stravaPolyline && state.stravaStats?.stravaId === act.id) {
+          state.stravaPolyline.setStyle({ color: '#0437F2' });
+        }
         showToast(`📡 ${act.name} shared`);
       } else {
         btn.textContent = '📡 Share'; btn.disabled = false;
@@ -952,31 +990,34 @@ function startPhotoObserver() {
     sharedPhotoState.markers.forEach(m => state.map.removeLayer(m));
     sharedPhotoState.markers = [];
     if (!photos || !photos.length) { refreshPhotoFab(); return; }
-    // Build set of local photo keys to avoid duplicate markers
-    const localKeys = new Set(Photos.getAll().map(p => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`));
+    // Skip photos owned by this user if they have local copies loaded (avoids double marker)
+    const hasLocalPhotos = Photos.getAll().length > 0;
     photos.forEach(p => {
-      // Skip if this photo is already shown by the local uploader
-      if (localKeys.has(`${p.lat.toFixed(4)},${p.lon.toFixed(4)}`)) return;
+      if (hasLocalPhotos && p.owner && p.owner === currentUser.email) return;
+      const thumbSrc = p.thumb || p.shareThumb || '';
       const icon = L.divIcon({
         className: '',
         html: `<div class="photo-marker">
-                 <div class="photo-marker-img" style="background-image:url('${p.thumb || p.shareThumb}')"></div>
+                 <div class="photo-marker-img" style="background-image:url('${thumbSrc}')"></div>
                  <div class="photo-marker-tip"></div>
                </div>`,
         iconSize: [48, 56], iconAnchor: [24, 56], popupAnchor: [0, -58],
       });
       const marker = L.marker([p.lat, p.lon], { icon, zIndexOffset: 490 }).addTo(state.map);
+      const title    = p.note || p.name || '';
+      const subtitle = p.note && p.name ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:#888;margin-top:1px">${p.name}</div>` : '';
       marker.bindPopup(`
         <div style="font-family:Syne,sans-serif;min-width:180px">
-          <img src="${p.thumb || p.shareThumb}" style="width:100%;border-radius:6px;margin-bottom:6px;display:block"/>
-          <b style="font-size:.85rem">${p.name || ''}</b>
-          ${p.note ? `<div style="font-size:.75rem;color:#888;margin-top:3px;line-height:1.4">${p.note}</div>` : ''}
+          <img src="${thumbSrc}" style="width:100%;border-radius:6px;margin-bottom:6px;display:block"/>
+          <b style="font-size:.85rem">${title}</b>
+          ${subtitle}
           <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#666;margin-top:4px">
             ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
           </div>
         </div>`);
       sharedPhotoState.markers.push(marker);
     });
+    refreshPhotoFab();
   });
 }
 
@@ -1010,7 +1051,7 @@ function initPhotosUI() {
     // Show FAB when local photos exist; observer photos handled in startPhotoObserver
     refreshPhotoFab();
     // Push to Firebase so observers see the photos too
-    LiveTrack.publishPhotos(photos)
+    LiveTrack.publishPhotos(photos, currentUser.email)
       .catch(e => console.error('[Photos] Firebase publish error:', e.message));
   });
 

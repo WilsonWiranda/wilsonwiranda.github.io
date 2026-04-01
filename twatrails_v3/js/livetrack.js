@@ -105,7 +105,7 @@ const LiveTrack = (() => {
   // Each activity is stored under /shared/activities/{activityId}
   // so multiple can be shared simultaneously.
 
-  async function publishStrava(latlngs, stats) {
+  async function publishStrava(latlngs, stats, owner) {
     if (!activitiesRef) return false;
     try {
       const id  = String(stats.stravaId || stats.id || Date.now());
@@ -122,6 +122,7 @@ const LiveTrack = (() => {
         elevation: stats.elevation || 0,
         time:      stats.movingTime|| 0,
         points:    pts.length,
+        owner:     owner || '',
         ts:        Date.now(),
         shared:    true,
       });
@@ -203,7 +204,7 @@ const LiveTrack = (() => {
   const _publishedPhotoIds = new Set();
   const _publishedNoteIds  = new Set();
 
-  async function publishPhotos(photos) {
+  async function publishPhotos(photos, owner) {
     if (!photosRef) return;
     try {
       const currentIds = new Set(photos.map(p => String(p.id)));
@@ -229,6 +230,7 @@ const LiveTrack = (() => {
             note:     p.note     || '',
             thumb,
             datetime: p.datetime || '',
+            owner:    owner || '',
             ts:       Date.now(),
           });
           _publishedPhotoIds.add(id);
@@ -262,17 +264,18 @@ const LiveTrack = (() => {
   }
 
   // ── Notes sharing ───────────────────────────────────────────
-  async function publishNote(pin) {
+  async function publishNote(pin, owner) {
     if (!notesRef) return false;
     try {
       const id = String(pin.id).replace(/[.#$\[\]]/g, '_');
       await notesRef.child(id).set({
-        lat:  parseFloat(pin.lat.toFixed(6)),
-        lon:  parseFloat(pin.lon.toFixed(6)),
-        name: pin.name || '',
-        note: pin.note || '',
-        date: pin.date || Date.now(),
-        ts:   Date.now(),
+        lat:   parseFloat(pin.lat.toFixed(6)),
+        lon:   parseFloat(pin.lon.toFixed(6)),
+        name:  pin.name || '',
+        note:  pin.note || '',
+        date:  pin.date || Date.now(),
+        owner: owner || '',
+        ts:    Date.now(),
       });
       _publishedNoteIds.add(id);
       return true;

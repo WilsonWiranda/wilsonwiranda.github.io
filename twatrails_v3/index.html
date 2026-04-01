@@ -432,6 +432,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .tab-locked-overlay .btn-unlock{background:var(--green);color:#081a0f;border:none;border-radius:var(--radius);padding:8px 18px;font-family:var(--sans);font-weight:700;font-size:.82rem;cursor:pointer;margin-top:4px}
 .tab-btn.guest-locked{opacity:.45;position:relative}
 .tab-btn.guest-locked::before{content:'🔒';position:absolute;top:2px;right:3px;font-size:.45rem;line-height:1}
+
+/* ── Splash login ── */
+.splash-email{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--sans);font-size:.85rem;outline:none;width:100%;max-width:260px;text-align:center}
+.splash-email:focus{border-color:var(--green)}
+.splash-email::placeholder{color:var(--text3)}
+.splash-actions{display:flex;flex-direction:column;gap:8px;width:100%;max-width:260px}
   </style>
 </head>
 <body>
@@ -460,7 +466,34 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div class="countdown-date">16 May 2026 · 09:00</div>
     </div>
 
-    <button id="splashEnter" class="btn-primary">Open App</button>
+    <!-- Language selector on splash -->
+    <div class="lang-select" style="margin:2px 0">
+      <button class="lang-btn" data-lang="en" title="English" onclick="setLang('en')" style="padding:1px 2px;line-height:1">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 36" width="26" height="16" style="display:block;border-radius:2px;overflow:hidden">
+          <rect width="60" height="36" fill="#012169"/>
+          <line x1="0" y1="0" x2="60" y2="36" stroke="#fff" stroke-width="7.2"/>
+          <line x1="60" y1="0" x2="0" y2="36" stroke="#fff" stroke-width="7.2"/>
+          <line x1="0" y1="0" x2="60" y2="36" stroke="#C8102E" stroke-width="4"/>
+          <line x1="60" y1="0" x2="0" y2="36" stroke="#C8102E" stroke-width="4"/>
+          <rect x="24" y="0" width="12" height="36" fill="#fff"/>
+          <rect x="0" y="12" width="60" height="12" fill="#fff"/>
+          <rect x="26" y="0" width="8" height="36" fill="#C8102E"/>
+          <rect x="0" y="14" width="60" height="8" fill="#C8102E"/>
+        </svg>
+      </button>
+      <button class="lang-btn" data-lang="es" title="Español" onclick="setLang('es')" style="padding:1px 2px;line-height:1">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 36" width="26" height="16" style="display:block;border-radius:2px;overflow:hidden">
+          <rect width="60" height="36" fill="#AA151B"/>
+          <rect y="9" width="60" height="18" fill="#F1BF00"/>
+        </svg>
+      </button>
+      <button class="lang-btn" data-lang="ca" title="Català" onclick="setLang('ca')" style="padding:1px 2px;line-height:1"><img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 14' width='22' height='14' style='border-radius:2px;vertical-align:middle'><rect width='22' height='14' fill='%23FFD700'/><rect y='1.75' width='22' height='1.75' fill='%23CC1010'/><rect y='5.25' width='22' height='1.75' fill='%23CC1010'/><rect y='8.75' width='22' height='1.75' fill='%23CC1010'/><rect y='12.25' width='22' height='1.75' fill='%23CC1010'/></svg>" width="22" height="14" alt="CA" style="display:block;border-radius:2px"/></button>
+    </div>
+    <input id="splashEmailInput" class="splash-email" type="email" placeholder="your@email.com" autocomplete="email" />
+    <div class="splash-actions">
+      <button id="splashEnter" class="btn-primary">Open App</button>
+      <button id="splashGuest" class="btn-guest-login">Open App as Guest 👁</button>
+    </div>
   </div>
 </div>
 
@@ -1015,11 +1048,11 @@ document.addEventListener('DOMContentLoaded', () => {
     b.classList.toggle('active', b.dataset.lang === _currentLang));
 });
 
-// Re-apply full translation when app opens
-const _splashBtn = document.getElementById('splashEnter');
-if (_splashBtn) {
-  _splashBtn.addEventListener('click', () => setTimeout(() => setLang(_currentLang), 400));
-}
+// Re-apply full translation when app opens (both splash buttons)
+['splashEnter', 'splashGuest'].forEach(id => {
+  const btn = document.getElementById(id);
+  if (btn) btn.addEventListener('click', () => setTimeout(() => setLang(_currentLang), 400));
+});
 </script>
 
 
