@@ -29,6 +29,92 @@ const state = {
 
 const $ = id => document.getElementById(id);
 
+// ── User / Guest system ──────────────────────────────────────────
+const currentUser = { email: null, isGuest: true };
+
+function initUserSystem(onReady) {
+  const saved = localStorage.getItem('p1150_user_email');
+  if (saved) {
+    currentUser.email = saved;
+    currentUser.isGuest = false;
+    updateUserBadge();
+    onReady();
+    return;
+  }
+  _openUserModal(onReady);
+}
+
+function showUserModal() {
+  _openUserModal(null);
+}
+window.showUserModal = showUserModal;
+
+function _openUserModal(onReadyCb) {
+  const modal = $('userModal');
+  const emailInput = $('userEmailInput');
+  modal.classList.remove('hidden');
+  emailInput.value = currentUser.email || '';
+
+  const doLogin = () => {
+    const email = emailInput.value.trim();
+    if (!email || !email.includes('@')) { emailInput.focus(); emailInput.style.borderColor='var(--red)'; return; }
+    emailInput.style.borderColor = '';
+    currentUser.email = email;
+    currentUser.isGuest = false;
+    localStorage.setItem('p1150_user_email', email);
+    modal.classList.add('hidden');
+    updateUserBadge();
+    applyGuestMode(false);
+    if (onReadyCb) onReadyCb(); else showToast(`Welcome back, ${email.split('@')[0]}!`);
+  };
+  const doGuest = () => {
+    currentUser.email = null;
+    currentUser.isGuest = true;
+    localStorage.removeItem('p1150_user_email');
+    modal.classList.add('hidden');
+    updateUserBadge();
+    applyGuestMode(true);
+    if (onReadyCb) onReadyCb();
+  };
+
+  $('btnUserLogin').onclick  = doLogin;
+  $('btnGuestLogin').onclick = doGuest;
+  emailInput.onkeydown = e => { if (e.key === 'Enter') doLogin(); };
+}
+
+function updateUserBadge() {
+  const badge = $('userBadge');
+  const label = $('userBadgeLabel');
+  if (!badge || !label) return;
+  if (currentUser.isGuest) {
+    badge.classList.remove('logged-in');
+    label.textContent = 'Guest';
+  } else {
+    badge.classList.add('logged-in');
+    label.textContent = currentUser.email.split('@')[0];
+  }
+}
+
+function applyGuestMode(isGuest) {
+  const show = el => { if (el) el.style.display = ''; };
+  const hide = el => { if (el) el.style.display = 'none'; };
+  const flex = el => { if (el) el.style.display = 'flex'; };
+
+  if (isGuest) {
+    flex($('notesGuestLock'));    hide($('notesContent'));
+    flex($('photosGuestLock'));   hide($('photosContent'));
+    flex($('liveGuestLock'));     hide($('liveHikerControls'));
+  } else {
+    hide($('notesGuestLock'));    show($('notesContent'));
+    hide($('photosGuestLock'));   show($('photosContent'));
+    hide($('liveGuestLock'));     show($('liveHikerControls'));
+  }
+  ['notes', 'photos', 'live'].forEach(tab => {
+    const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+    if (btn) btn.classList.toggle('guest-locked', isGuest);
+  });
+}
+
 // ── Init ─────────────────────────────────────────────────────
 (async function init() {
   const callbackResult = await handleStravaCallback();
@@ -36,17 +122,20 @@ const $ = id => document.getElementById(id);
   $('splashEnter').addEventListener('click', () => {
     $('splash').classList.add('hidden');
     $('app').classList.remove('hidden');
-    initMap();
-    initDragPanel();
-    initFABs();
-    initSearch();
-    renderPreloadedRoutes();
-    initStravaUI(callbackResult);
-    restoreStravaConfig();
-    initWaypointsUI();
-    ElevationChart.init($('elevCanvas'));
-    initLiveTrack();
-    initPhotosUI();
+    initUserSystem(() => {
+      applyGuestMode(currentUser.isGuest);
+      initMap();
+      initDragPanel();
+      initFABs();
+      initSearch();
+      renderPreloadedRoutes();
+      initStravaUI(callbackResult);
+      restoreStravaConfig();
+      initWaypointsUI();
+      ElevationChart.init($('elevCanvas'));
+      initLiveTrack();
+      initPhotosUI();
+    });
   });
 })();
 
@@ -106,6 +195,7 @@ function initFABs() {
   $('btnCenter').addEventListener('click', centerOnUser);
   $('btnElev').addEventListener('click', toggleElevPanel);
   $('btnTogglePhotos').addEventListener('click', togglePhotosVisibility);
+  $('btnToggleNotes').addEventListener('click', toggleNotesVisibility);
   $('btnCloseElev').addEventListener('click', () => {
     $('elevPanel').classList.add('hidden'); state.map.invalidateSize(); positionFABs();
   });
@@ -305,6 +395,7 @@ function initWaypointsUI() {
   });
   Waypoints.onChange(pins => {
     renderCustomPins(pins);
+    refreshNotesFab();
     $('pinModeNote').classList.add('hidden');
     btn.textContent = '📌 Drop Note'; btn.style.borderColor=''; btn.style.color='';
   });
@@ -827,6 +918,8 @@ function startStravaObserver() {
 
     activities.forEach(data => {
       if (!data.latlngs || !data.latlngs.length) return;
+      // Skip activities the current user already has displayed locally (avoids double polyline)
+      if (data.firebaseId && state.stravaSharedIds.has(data.firebaseId)) return;
       const pl = L.polyline(data.latlngs, {
         color: '#0437F2', weight: 4, opacity: 0.88, dashArray: '7 4', lineJoin: 'round',
       }).addTo(state.map);
@@ -859,7 +952,11 @@ function startPhotoObserver() {
     sharedPhotoState.markers.forEach(m => state.map.removeLayer(m));
     sharedPhotoState.markers = [];
     if (!photos || !photos.length) { refreshPhotoFab(); return; }
+    // Build set of local photo keys to avoid duplicate markers
+    const localKeys = new Set(Photos.getAll().map(p => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`));
     photos.forEach(p => {
+      // Skip if this photo is already shown by the local uploader
+      if (localKeys.has(`${p.lat.toFixed(4)},${p.lon.toFixed(4)}`)) return;
       const icon = L.divIcon({
         className: '',
         html: `<div class="photo-marker">
@@ -869,12 +966,11 @@ function startPhotoObserver() {
         iconSize: [48, 56], iconAnchor: [24, 56], popupAnchor: [0, -58],
       });
       const marker = L.marker([p.lat, p.lon], { icon, zIndexOffset: 490 }).addTo(state.map);
-      // Use note as title if set, otherwise filename
-      const obsTitle = p.note || p.name;
       marker.bindPopup(`
         <div style="font-family:Syne,sans-serif;min-width:180px">
-          <img src="${p.thumb}" style="width:100%;border-radius:6px;margin-bottom:6px;display:block"/>
-          <b style="font-size:.85rem">${obsTitle}</b>
+          <img src="${p.thumb || p.shareThumb}" style="width:100%;border-radius:6px;margin-bottom:6px;display:block"/>
+          <b style="font-size:.85rem">${p.name || ''}</b>
+          ${p.note ? `<div style="font-size:.75rem;color:#888;margin-top:3px;line-height:1.4">${p.note}</div>` : ''}
           <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#666;margin-top:4px">
             ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
           </div>
@@ -1139,6 +1235,36 @@ if ('serviceWorker' in navigator) {
 }
 
 
+// ── Notes visibility toggle ──────────────────────────────────────
+let notesVisible = true;
+
+function refreshNotesFab() {
+  const hasCustom = Waypoints.getCustom().length > 0;
+  const hasShared = sharedNotesState.markers.length > 0;
+  const fab = $('btnToggleNotes');
+  if (fab) fab.classList.toggle('hidden', !hasCustom && !hasShared);
+}
+
+function toggleNotesVisibility() {
+  notesVisible = !notesVisible;
+  const fab = $('btnToggleNotes');
+  if (fab) {
+    fab.style.opacity = notesVisible ? '1' : '0.45';
+    fab.title = notesVisible ? 'Hide notes on map' : 'Show notes on map';
+  }
+  Waypoints.getCustom().forEach(p => {
+    const el = p.marker.getElement();
+    if (el) el.style.display = notesVisible ? '' : 'none';
+  });
+  if (sharedNotesState && sharedNotesState.markers) {
+    sharedNotesState.markers.forEach(m => {
+      const el = m.getElement();
+      if (el) el.style.display = notesVisible ? '' : 'none';
+    });
+  }
+  showToast(notesVisible ? '📝 Notes shown' : '📝 Notes hidden');
+}
+
 // ── Photo visibility toggle ───────────────────────────────────────
 let photosVisible = true;
 function refreshPhotoFab() {
@@ -1193,15 +1319,16 @@ function startNotesObserver() {
                 justify-content:center;font-size:10px">📍</div>`,
         iconSize:[22,22], iconAnchor:[11,22], popupAnchor:[0,-24],
       });
-      const title = n.note || n.name;
       const marker = L.marker([n.lat, n.lon], { icon, zIndexOffset: 480 }).addTo(state.map);
       marker.bindPopup(`<div style="font-family:Syne,sans-serif;min-width:160px">
-        <b style="color:#0437F2">📍 ${title}</b><br/>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#666;margin-top:4px">
+        <b style="color:#0437F2;font-size:.88rem">📍 ${n.name || 'Note'}</b><br/>
+        ${n.note ? `<span style="font-size:.75rem;color:#555;line-height:1.4;display:block;margin-top:3px">${n.note}</span>` : ''}
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#888;margin-top:4px">
           ${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}
         </div></div>`);
       sharedNotesState.markers.push(marker);
     });
+    refreshNotesFab();
   });
 }
 
