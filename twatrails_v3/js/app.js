@@ -134,11 +134,6 @@ function applyGuestMode(isGuest) {
     restoreStravaConfig(); initWaypointsUI();
     ElevationChart.init($('elevCanvas'));
     initLiveTrack(); initPhotosUI();
-    // After Firebase is up, set owner path and restore private data
-    if (!currentUser.isGuest) {
-      LiveTrack.setOwner(currentUser.email);
-      restorePrivateData();
-    }
   };
 
   $('splashEnter').addEventListener('click', () => {
@@ -1529,7 +1524,7 @@ const liveState = {
   isSharing:    false,
 };
 
-function initLiveTrack() {
+async function initLiveTrack() {
   // Auto-connect — no config needed
   const ok = LiveTrack.init();
   if (!ok) {
@@ -1569,9 +1564,17 @@ function initLiveTrack() {
   startViewerSubscription();
   // Subscribe — all visitors see any shared Strava route
   startStravaObserver();
-  // Subscribe — all visitors see shared photos
+
+  // For logged-in users: restore private notes + photos BEFORE starting photo/notes
+  // observers so dedup runs against already-populated local arrays (prevents doubling)
+  if (!currentUser.isGuest) {
+    LiveTrack.setOwner(currentUser.email);
+    await restorePrivateData();
+  }
+
+  // Subscribe — all visitors see shared photos (must be after private restore for dedup)
   startPhotoObserver();
-  // Subscribe — all visitors see shared notes
+  // Subscribe — all visitors see shared notes (same reason)
   startNotesObserver();
 
   // Restore hiker sharing state if page was reloaded mid-share
