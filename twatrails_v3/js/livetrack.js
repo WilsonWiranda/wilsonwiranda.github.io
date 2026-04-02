@@ -25,7 +25,8 @@ const LiveTrack = (() => {
   const SK_HIKER = 'tm_fb_is_hiker';
 
   let db               = null;
-  let posRef           = null;
+  let posRef           = null;   // /shared/positions/{ownerKey} — per-user position
+  let positionsRef     = null;   // /shared/positions — all hikers
   let stravaRef        = null;   // legacy single-activity (kept for compat)
   let activitiesRef    = null;   // multi-activity map
   let photosRef        = null;
@@ -33,8 +34,10 @@ const LiveTrack = (() => {
   let ownerRef         = null;   // /owner/{userKey}
   let ownerNotesRef    = null;   // /owner/{userKey}/notes
   let ownerPhotosRef   = null;   // /owner/{userKey}/photos
+  let _ownerEmail      = null;   // current user's email (for position writes)
   let isSharing        = false;
   let viewerListener   = null;
+  let hikersListener   = null;
   let stravaListener      = null;
   let activitiesListener  = null;
   let photosListener      = null;
@@ -52,8 +55,9 @@ const LiveTrack = (() => {
       } else {
         firebase.initializeApp(FIREBASE_CONFIG);
       }
-      db        = firebase.database();
-      posRef    = db.ref('/hiker/position');
+      db            = firebase.database();
+      positionsRef  = db.ref('/shared/positions');  // all hikers
+      posRef        = null;                          // set per-user in setOwner
       stravaRef     = db.ref('/shared/strava');     // kept for compat
       activitiesRef = db.ref('/shared/activities'); // multi-activity
       photosRef     = db.ref('/shared/photos');
@@ -70,10 +74,13 @@ const LiveTrack = (() => {
   // userKey sanitises email for Firebase key restrictions.
   function setOwner(email) {
     if (!db || !email) return;
-    const key = email.replace(/[.#$\[\]@]/g, '_');
+    _ownerEmail   = email;
+    const key     = email.replace(/[.#$\[\]@]/g, '_');
     ownerRef      = db.ref(`/owner/${key}`);
     ownerNotesRef  = ownerRef.child('notes');
     ownerPhotosRef = ownerRef.child('photos');
+    // Per-user public position slot
+    posRef = positionsRef ? positionsRef.child(key) : null;
   }
 
   // ── Private notes ─────────────────────────────────────────
@@ -204,6 +211,7 @@ const LiveTrack = (() => {
         heading:  heading   != null ? Math.round(heading)                 : null,
         ts:       Date.now(),
         sharing:  true,
+        owner:    _ownerEmail || '',
       });
     } catch (e) {
       console.warn('[LiveTrack] Push failed:', e.message);
@@ -271,6 +279,27 @@ const LiveTrack = (() => {
     if (posRef && viewerListener !== null) {
       posRef.off('value', viewerListener);
       viewerListener = null;
+    }
+  }
+
+  // ── All hikers: subscribe to /shared/positions ────────────
+  // cb receives array of { ownerKey, owner, lat, lon, alt, speed, accuracy, ts, sharing }
+  function subscribeAllHikers(cb) {
+    if (!positionsRef) { cb([]); return; }
+    hikersListener = positionsRef.on('value', snap => {
+      const val = snap.val();
+      if (!val) { cb([]); return; }
+      const hikers = Object.entries(val)
+        .map(([key, d]) => ({ ...d, ownerKey: key }))
+        .filter(d => d && d.lat && d.lon);
+      cb(hikers);
+    }, err => console.warn('[LiveTrack] Hikers listener error:', err.message));
+  }
+
+  function unsubscribeAllHikers() {
+    if (positionsRef && hikersListener !== null) {
+      positionsRef.off('value', hikersListener);
+      hikersListener = null;
     }
   }
 
@@ -431,6 +460,7 @@ const LiveTrack = (() => {
     publishPrivateNote, unpublishPrivateNote, loadPrivateNotes,
     publishPrivatePhoto, unpublishPrivatePhoto, loadPrivatePhotos,
     subscribeViewer, unsubscribeViewer,
+    subscribeAllHikers, unsubscribeAllHikers,
     subscribeStrava, unsubscribeStrava,
     subscribePhotos, unsubscribePhotos,
     onStatus, isReady, isSharingNow,

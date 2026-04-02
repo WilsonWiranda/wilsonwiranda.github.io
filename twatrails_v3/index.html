@@ -491,7 +491,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     </div>
     <div class="splash-actions">
       <button id="splashGuest" class="btn-primary" style="width:100%">Open App as Guest 👁</button>
-      <button id="splashEnter" class="btn-guest-login" style="width:100%">Open App</button>
+      <button id="splashEnter" class="btn-guest-login" style="width:100%">Open App by Email Login</button>
     </div>
     <input id="splashEmailInput" class="splash-email" type="email" placeholder="your@email.com" autocomplete="email" />
   </div>
@@ -531,35 +531,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <span class="rec-dot"></span>
         <span id="recElapsedBadge" class="rec-time">0:00</span>
       </div>
-      <div class="lang-select" id="langSelect">
-        <!-- English: Union Jack -->
-        <button class="lang-btn active" data-lang="en" title="English" onclick="setLang('en')" style="padding:1px 2px;line-height:1">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 36" width="26" height="16" style="display:block;border-radius:2px;overflow:hidden">
-            <rect width="60" height="36" fill="#012169"/>
-            <!-- St Andrew's cross (white) -->
-            <line x1="0" y1="0" x2="60" y2="36" stroke="#fff" stroke-width="7.2"/>
-            <line x1="60" y1="0" x2="0" y2="36" stroke="#fff" stroke-width="7.2"/>
-            <!-- St Patrick's cross (red) -->
-            <line x1="0" y1="0" x2="60" y2="36" stroke="#C8102E" stroke-width="4"/>
-            <line x1="60" y1="0" x2="0" y2="36" stroke="#C8102E" stroke-width="4"/>
-            <!-- St George's cross (white) -->
-            <rect x="24" y="0" width="12" height="36" fill="#fff"/>
-            <rect x="0" y="12" width="60" height="12" fill="#fff"/>
-            <!-- St George's cross (red) -->
-            <rect x="26" y="0" width="8" height="36" fill="#C8102E"/>
-            <rect x="0" y="14" width="60" height="8" fill="#C8102E"/>
-          </svg>
-        </button>
-        <!-- Spanish flag -->
-        <button class="lang-btn" data-lang="es" title="Español" onclick="setLang('es')" style="padding:1px 2px;line-height:1">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 36" width="26" height="16" style="display:block;border-radius:2px;overflow:hidden">
-            <rect width="60" height="36" fill="#AA151B"/>
-            <rect y="9" width="60" height="18" fill="#F1BF00"/>
-          </svg>
-        </button>
-        <!-- Catalan flag -->
-        <button class="lang-btn" data-lang="ca" title="Català" onclick="setLang('ca')" style="padding:1px 2px;line-height:1"><img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 14' width='22' height='14' style='border-radius:2px;vertical-align:middle'><rect width='22' height='14' fill='%23FFD700'/><rect y='1.75' width='22' height='1.75' fill='%23CC1010'/><rect y='5.25' width='22' height='1.75' fill='%23CC1010'/><rect y='8.75' width='22' height='1.75' fill='%23CC1010'/><rect y='12.25' width='22' height='1.75' fill='%23CC1010'/></svg>" width="22" height="14" alt="CA" style="display:block;border-radius:2px"/></button>
-      </div>
       <button id="userBadge" class="user-badge" title="User account" onclick="showUserModal()">
         <span class="user-badge-dot"></span>
         <span id="userBadgeLabel">Guest</span>
@@ -586,20 +557,20 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="drag-handle" id="dragHandle"><div class="drag-bar"></div></div>
 
     <div class="tab-nav">
-      <button class="tab-btn active" data-tab="routes">Routes</button>
-      <button class="tab-btn" data-tab="live">
+      <button class="tab-btn active" data-tab="live">
         <span class="tab-live-dot hidden" id="tabLiveDot"></span>Live
       </button>
+      <button class="tab-btn" data-tab="routes">Routes</button>
       <button class="tab-btn" data-tab="pins">Stages</button>
-      <button class="tab-btn" data-tab="notes">Notes</button>
       <button class="tab-btn" data-tab="strava">Hiker</button>
       <button class="tab-btn" data-tab="compare">Compare</button>
       <button class="tab-btn" data-tab="stats">Stats</button>
       <button class="tab-btn" data-tab="photos">📷 Photos</button>
+      <button class="tab-btn" data-tab="notes">Notes</button>
     </div>
 
     <!-- ROUTES -->
-    <div class="tab-pane active" id="tab-routes">
+    <div class="tab-pane" id="tab-routes">
       <div class="section-header">
         <span class="section-label">Pre-loaded Trails</span>
         <label class="upload-btn-small" for="gpxUpload">+ Upload GPX</label>
@@ -613,7 +584,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     </div>
 
     <!-- LIVE TRACKING -->
-    <div class="tab-pane" id="tab-live">
+    <div class="tab-pane active" id="tab-live">
 
       <!-- Hiker controls -->
       <div class="live-section">
@@ -641,17 +612,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
       <!-- Viewer panel — everyone sees this -->
       <div class="live-section">
-        <div class="section-label">Hiker position</div>
-        <div class="live-viewer-card">
-          <div id="livePosInfo">
-            <div class="info-row"><span class="info-label">Status</span><span id="liveStatus" class="info-val">—</span></div>
-            <div class="info-row"><span class="info-label">Last update</span><span id="liveLastUpdate" class="info-val mono">—</span></div>
-            <div class="info-row"><span class="info-label">Altitude</span><span id="liveAlt" class="info-val">—</span></div>
-            <div class="info-row"><span class="info-label">Speed</span><span id="liveSpeed" class="info-val">—</span></div>
-            <div class="info-row"><span class="info-label">Accuracy</span><span id="liveAcc" class="info-val">—</span></div>
-          </div>
-          <button id="btnJumpToHiker" class="btn-ghost" style="width:100%;margin-top:8px" disabled>🎯 Jump to hiker on map</button>
+        <div class="section-label">Hiker positions</div>
+        <div id="hikerList">
+          <div style="color:var(--text3);font-size:.8rem;padding:8px 0">No hikers sharing position</div>
         </div>
+        <button id="btnJumpToHiker" class="btn-ghost" style="width:100%;margin-top:8px" disabled>🎯 Jump to hiker on map</button>
       </div>
 
     </div><!-- /tab-live -->
@@ -694,8 +659,15 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       </div><!-- /notesContent -->
     </div>
 
-    <!-- STRAVA -->
+    <!-- STRAVA / HIKER -->
     <div class="tab-pane" id="tab-strava">
+      <div id="stravaGuestLock" class="tab-locked-overlay">
+        <div class="lock-icon">🏃</div>
+        <strong>Login to access Hiker features</strong>
+        Connect Strava and share activities with other hikers.
+        <button class="btn-unlock" onclick="showUserModal()">Login →</button>
+      </div>
+      <div id="stravaContent">
       <div class="strava-header">
         <svg viewBox="0 0 40 40" fill="none" class="strava-icon">
           <path d="M16 5 L24 22 L20 22 L28 35" stroke="#FC4C02" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
@@ -742,6 +714,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div class="info-row"><span class="info-label">Time</span><span id="stravaTime" class="info-val">—</span></div>
         <button id="btnClearStrava" class="btn-ghost danger" style="margin-top:8px;width:100%">✕ Remove overlay</button>
       </div>
+      </div><!-- /stravaContent -->
     </div>
 
     <!-- COMPARE -->

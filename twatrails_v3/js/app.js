@@ -104,12 +104,14 @@ function applyGuestMode(isGuest) {
     flex($('notesGuestLock'));    hide($('notesContent'));
     flex($('photosGuestLock'));   hide($('photosContent'));
     flex($('liveGuestLock'));     hide($('liveHikerControls'));
+    flex($('stravaGuestLock'));   hide($('stravaContent'));
   } else {
     hide($('notesGuestLock'));    show($('notesContent'));
     hide($('photosGuestLock'));   show($('photosContent'));
     hide($('liveGuestLock'));     show($('liveHikerControls'));
+    hide($('stravaGuestLock'));   show($('stravaContent'));
   }
-  ['notes', 'photos', 'live'].forEach(tab => {
+  ['notes', 'photos', 'live', 'strava'].forEach(tab => {
     const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
     if (btn) btn.classList.toggle('guest-locked', isGuest);
   });
@@ -1093,7 +1095,6 @@ function startPhotoObserver() {
       marker._fbId = p.firebaseId;
 
       const title    = p.note || p.name || '';
-      const subtitle = p.note && p.name ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:#888;margin-top:1px">${p.name}</div>` : '';
       const ownerStr = p.owner ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:#4ade80;margin-top:2px">👤 ${p.owner.split('@')[0]}</div>` : '';
       // Show Remove button if this user owns the photo (owner match) OR entry has no owner (pre-owner data) and user is logged in
       const canRemove = !currentUser.isGuest && (p.owner === currentUser.email || !p.owner);
@@ -1106,7 +1107,6 @@ function startPhotoObserver() {
         <div style="font-family:Syne,sans-serif;min-width:180px">
           <img src="${thumbSrc}" style="width:100%;border-radius:6px;margin-bottom:6px;display:block"/>
           <b style="font-size:.85rem">${title}</b>
-          ${subtitle}
           ${ownerStr}
           <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#666;margin-top:4px">
             ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
@@ -1524,8 +1524,7 @@ if ('serviceWorker' in navigator) {
 // ════════════════════════════════════════════════════════════
 
 const liveState = {
-  hikerMarker:  null,
-  hikerData:    null,
+  hikerMarkers: {},   // ownerKey → { marker, data }
   seenInterval: null,
   isSharing:    false,
 };
@@ -1592,9 +1591,37 @@ async function initLiveTrack() {
 }
 
 function jumpToHiker() {
-  if (liveState.hikerData) {
-    state.map.setView([liveState.hikerData.lat, liveState.hikerData.lon], 15, { animate: true });
+  const entries = Object.entries(liveState.hikerMarkers).filter(([, h]) => h.data?.lat);
+  if (!entries.length) return;
+  if (entries.length === 1) {
+    const [, h] = entries[0];
+    state.map.setView([h.data.lat, h.data.lon], 15, { animate: true });
+    return;
   }
+  // Multiple hikers — show picker overlay
+  const existing = $('hikerPickerOverlay');
+  if (existing) { existing.remove(); return; }
+  const overlay = document.createElement('div');
+  overlay.id = 'hikerPickerOverlay';
+  overlay.style.cssText = 'position:fixed;bottom:80px;right:14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);z-index:1000;min-width:160px;padding:6px;font-family:Syne,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.5)';
+  overlay.innerHTML = '<div style="font-size:.72rem;color:var(--text2);padding:4px 6px;margin-bottom:4px">Jump to hiker:</div>';
+  entries.forEach(([, h]) => {
+    const label = h.data.owner ? h.data.owner.split('@')[0] : h.data.ownerKey || '?';
+    const dot   = h.data.sharing ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--yellow)">◎</span>';
+    const btn   = document.createElement('button');
+    btn.style.cssText = 'display:block;width:100%;text-align:left;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-family:Syne,sans-serif;font-size:.8rem;cursor:pointer;margin-bottom:4px';
+    btn.innerHTML = `${dot} ${label}`;
+    btn.onclick = () => { state.map.setView([h.data.lat, h.data.lon], 15, { animate:true }); overlay.remove(); };
+    overlay.appendChild(btn);
+  });
+  setTimeout(() => {
+    document.addEventListener('click', function close(e) {
+      if (!overlay.contains(e.target) && e.target.id !== 'btnJumpHikerFab' && e.target.id !== 'btnJumpToHiker') {
+        overlay.remove(); document.removeEventListener('click', close);
+      }
+    });
+  }, 100);
+  $('app').appendChild(overlay);
 }
 
 function updateHikerControls(sharing) {
@@ -1622,123 +1649,122 @@ function updateHikerControls(sharing) {
 }
 
 function startViewerSubscription() {
-  LiveTrack.subscribeViewer(data => {
-    liveState.hikerData = data;
-    updateViewerUI(data);
-    if (data && data.lat && data.lon) {
-      updateHikerMarker(data);
-    }
-  });
+  LiveTrack.subscribeAllHikers(hikers => updateAllHikers(hikers));
 
   // Refresh "X min ago" every 30s
   clearInterval(liveState.seenInterval);
   liveState.seenInterval = setInterval(() => {
-    if (liveState.hikerData) updateViewerUI(liveState.hikerData);
+    const hikers = Object.values(liveState.hikerMarkers).map(h => h.data).filter(Boolean);
+    if (hikers.length) updateHikerListUI(hikers);
   }, 30000);
 }
 
-function updateViewerUI(data) {
-  const statusEl  = $('liveStatus');
-  const updateEl  = $('liveLastUpdate');
-  const altEl     = $('liveAlt');
-  const speedEl   = $('liveSpeed');
-  const accEl     = $('liveAcc');
-  const jumpBtn   = $('btnJumpToHiker');
+function ageString(ts) {
+  if (!ts) return '';
+  const ageSec = Math.floor((Date.now() - ts) / 1000);
+  if (ageSec < 60)        return `${ageSec}s ago`;
+  if (ageSec < 3600)      return `${Math.floor(ageSec/60)}m ago`;
+  return `${Math.floor(ageSec/3600)}h ago`;
+}
 
-  if (!data || !data.lat) {
-    statusEl.textContent  = 'No position yet';
-    updateEl.textContent  = '—';
-    altEl.textContent     = '—';
-    speedEl.textContent   = '—';
-    accEl.textContent     = '—';
-    jumpBtn.disabled      = true;
-    $('btnJumpHikerFab').classList.add('hidden');
-    $('liveViewerBadge').classList.add('hidden');
+function updateAllHikers(hikers) {
+  const newKeys = new Set(hikers.map(h => h.ownerKey));
+
+  // Remove markers for hikers no longer present
+  for (const [key, h] of Object.entries(liveState.hikerMarkers)) {
+    if (!newKeys.has(key)) {
+      state.map.removeLayer(h.marker);
+      delete liveState.hikerMarkers[key];
+    }
+  }
+
+  // Add or update each hiker's marker
+  hikers.forEach(data => {
+    const key    = data.ownerKey;
+    const latlng = [data.lat, data.lon];
+    const isLive = !!data.sharing;
+
+    if (liveState.hikerMarkers[key]) {
+      liveState.hikerMarkers[key].marker.setLatLng(latlng);
+      liveState.hikerMarkers[key].data = data;
+      if (liveState.hikerMarkers[key].marker.isPopupOpen()) {
+        liveState.hikerMarkers[key].marker.setPopupContent(buildHikerPopup(data));
+      }
+    } else {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="hiker-dot"><div class="hiker-dot-pulse"></div><div class="hiker-dot-inner"></div></div>`,
+        iconSize: [30,30], iconAnchor: [15,15], popupAnchor: [0,-15],
+      });
+      const marker = L.marker(latlng, { icon, zIndexOffset: 2000 })
+        .addTo(state.map)
+        .bindPopup(() => buildHikerPopup(liveState.hikerMarkers[key]?.data || data));
+      liveState.hikerMarkers[key] = { marker, data };
+    }
+
+    // Live vs last-known dot styling
+    const el    = liveState.hikerMarkers[key].marker.getElement();
+    const inner = el?.querySelector('.hiker-dot-inner');
+    const pulse = el?.querySelector('.hiker-dot-pulse');
+    if (inner) inner.style.background = isLive ? 'var(--green)' : 'var(--yellow)';
+    if (pulse) pulse.style.display    = isLive ? '' : 'none';
+  });
+
+  // Update topbar badge + jump buttons
+  const anyLive  = hikers.some(h => h.sharing);
+  const anyHiker = hikers.length > 0;
+  $('btnJumpToHiker').disabled = !anyHiker;
+  $('btnJumpHikerFab').classList.toggle('hidden', !anyHiker);
+  $('liveViewerBadge').classList.toggle('hidden', !anyLive);
+
+  updateHikerListUI(hikers);
+}
+
+function updateHikerListUI(hikers) {
+  const list = $('hikerList');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (!hikers.length) {
+    list.innerHTML = '<div style="color:var(--text3);font-size:.8rem;padding:8px 0">No hikers sharing position</div>';
     return;
   }
 
-  jumpBtn.disabled = false;
-  $('btnJumpHikerFab').classList.remove('hidden');
+  hikers.forEach(data => {
+    const ownerLabel  = data.owner ? data.owner.split('@')[0] : data.ownerKey || '—';
+    const ageStr      = ageString(data.ts);
+    const statusColor = data.sharing ? 'var(--green)' : 'var(--yellow)';
+    const statusText  = data.sharing ? '● Live' : '◎ Last known';
 
-  // Show the topbar LIVE badge only when actively sharing
-  if (data.sharing) {
-    $('liveViewerBadge').classList.remove('hidden');
-  } else {
-    $('liveViewerBadge').classList.add('hidden');
-  }
-
-  // Status
-  if (data.sharing) {
-    statusEl.innerHTML = '<span style="color:var(--green)">● Live</span>';
-  } else {
-    statusEl.innerHTML = '<span style="color:var(--yellow)">◎ Last known</span>';
-  }
-
-  // Age of last update
-  if (data.ts) {
-    const ageMs  = Date.now() - data.ts;
-    const ageSec = Math.floor(ageMs / 1000);
-    let ageStr;
-    if (ageSec < 60)         ageStr = `${ageSec}s ago`;
-    else if (ageSec < 3600)  ageStr = `${Math.floor(ageSec/60)}m ago`;
-    else                     ageStr = `${Math.floor(ageSec/3600)}h ago`;
-    updateEl.textContent = ageStr;
-  }
-
-  altEl.textContent   = data.alt    != null ? `${data.alt} m`           : '—';
-  speedEl.textContent = data.speed  != null ? `${data.speed} km/h`      : '—';
-  accEl.textContent   = data.accuracy != null ? `±${data.accuracy} m`   : '—';
-}
-
-function updateHikerMarker(data) {
-  const latlng = [data.lat, data.lon];
-  const isLive = !!data.sharing;
-
-  if (!liveState.hikerMarker) {
-    // Create marker
-    const icon = L.divIcon({
-      className: '',
-      html: `<div class="hiker-dot"><div class="hiker-dot-pulse"></div><div class="hiker-dot-inner"></div></div>`,
-      iconSize:   [30, 30],
-      iconAnchor: [15, 15],
-      popupAnchor:[0, -15],
-    });
-    liveState.hikerMarker = L.marker(latlng, { icon, zIndexOffset: 2000 })
-      .addTo(state.map)
-      .bindPopup(() => buildHikerPopup(liveState.hikerData));
-  } else {
-    liveState.hikerMarker.setLatLng(latlng);
-  }
-
-  // Update popup if open
-  if (liveState.hikerMarker.isPopupOpen()) {
-    liveState.hikerMarker.setPopupContent(buildHikerPopup(data));
-  }
-
-  // Dim dot if last-known (not live)
-  const inner = liveState.hikerMarker.getElement()?.querySelector('.hiker-dot-inner');
-  const pulse = liveState.hikerMarker.getElement()?.querySelector('.hiker-dot-pulse');
-  if (inner) inner.style.background = isLive ? 'var(--green)' : 'var(--yellow)';
-  if (pulse) pulse.style.display    = isLive ? '' : 'none';
+    const card = document.createElement('div');
+    card.className = 'live-viewer-card';
+    card.style.marginBottom = '8px';
+    card.innerHTML = `
+      <div style="font-size:.78rem;font-weight:700;color:var(--blue);margin-bottom:6px">👤 ${ownerLabel}</div>
+      <div class="info-row"><span class="info-label">Status</span><span class="info-val" style="color:${statusColor}">${statusText}${ageStr ? ` · ${ageStr}` : ''}</span></div>
+      <div class="info-row"><span class="info-label">Altitude</span><span class="info-val">${data.alt    != null ? data.alt    + ' m'   : '—'}</span></div>
+      <div class="info-row"><span class="info-label">Speed</span><span    class="info-val">${data.speed  != null ? data.speed  + ' km/h': '—'}</span></div>
+      <div class="info-row"><span class="info-label">Accuracy</span><span class="info-val">${data.accuracy != null ? '±' + data.accuracy + ' m' : '—'}</span></div>`;
+    list.appendChild(card);
+  });
 }
 
 function buildHikerPopup(data) {
   if (!data) return 'No data';
-  const ageMs  = data.ts ? Date.now() - data.ts : null;
-  const ageSec = ageMs != null ? Math.floor(ageMs / 1000) : null;
-  const ageStr = ageSec == null ? '' :
-    ageSec < 60 ? `${ageSec}s ago` :
-    ageSec < 3600 ? `${Math.floor(ageSec/60)}m ago` :
-    `${Math.floor(ageSec/3600)}h ago`;
-
+  const ageStr      = ageString(data.ts);
   const statusColor = data.sharing ? 'var(--green)' : 'var(--yellow)';
-  const statusText  = data.sharing ? '● Live'        : '◎ Last known';
+  const statusText  = data.sharing ? '● Live' : '◎ Last known';
+  const ownerLabel  = data.owner ? data.owner.split('@')[0] : '';
+  const ownerLine   = ownerLabel ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:#4ade80;margin-top:2px">👤 ${ownerLabel}</div>` : '';
 
   return `
     <div style="font-family:Syne,sans-serif;min-width:160px">
-      <b style="font-size:.9rem">Hiker Position</b><br/>
-      <span style="color:${statusColor};font-size:.75rem">${statusText}</span>
-      ${ageStr ? `<span style="color:#888;font-size:.72rem"> · ${ageStr}</span>` : ''}
+      <b style="font-size:.9rem">Hiker Position</b>
+      ${ownerLine}
+      <div style="margin-top:4px">
+        <span style="color:${statusColor};font-size:.75rem">${statusText}</span>
+        ${ageStr ? `<span style="color:#888;font-size:.72rem"> · ${ageStr}</span>` : ''}
+      </div>
       <div style="margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#aaa">
         ${data.lat.toFixed(5)}, ${data.lon.toFixed(5)}<br/>
         ${data.alt != null ? `Alt: ${data.alt}m` : ''}
