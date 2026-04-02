@@ -134,6 +134,11 @@ function applyGuestMode(isGuest) {
     restoreStravaConfig(); initWaypointsUI();
     ElevationChart.init($('elevCanvas'));
     initLiveTrack(); initPhotosUI();
+    // After Firebase is up, set owner path and restore private data
+    if (!currentUser.isGuest) {
+      LiveTrack.setOwner(currentUser.email);
+      restorePrivateData();
+    }
   };
 
   $('splashEnter').addEventListener('click', () => {
@@ -419,6 +424,24 @@ function initWaypointsUI() {
     btn.style.color       = active ? '' : 'var(--blue)';
   });
   Waypoints.onChange(pins => {
+    const newIds = new Set(pins.map(p => String(p.id)));
+    if (!currentUser.isGuest) {
+      // Detect added pins → save to private Firebase
+      pins.forEach(pin => {
+        if (!_prevPinIds.has(String(pin.id))) LiveTrack.publishPrivateNote(pin);
+      });
+      // Detect removed pins → delete from private (and shared) Firebase
+      for (const id of _prevPinIds) {
+        if (!newIds.has(id)) {
+          LiveTrack.unpublishPrivateNote(id);
+          if (_sharedNoteIds.has(id)) {
+            LiveTrack.unpublishNote(id);
+            _sharedNoteIds.delete(id);
+          }
+        }
+      }
+    }
+    _prevPinIds = newIds;
     renderCustomPins(pins);
     refreshNotesFab();
     $('pinModeNote').classList.add('hidden');
@@ -441,8 +464,11 @@ function renderRouteWaypoints(waypoints) {
 
 function hideRouteWaypoints() { $('routeWaypointsSection').classList.add('hidden'); $('routeWaypointList').innerHTML=''; }
 
-// Track which note IDs are shared
-const _sharedNoteIds = new Set();
+// Track which note / photo IDs are shared and previous arrays for diff detection
+const _sharedNoteIds  = new Set();
+const _sharedPhotoIds = new Set();
+let _prevPinIds   = new Set();
+let _prevPhotoIds = new Set();
 
 function renderCustomPins(pins) {
   const list=$('customPinList'), noMsg=$('noPinsMsg'), exp=$('pinExportRow');
@@ -482,13 +508,59 @@ async function toggleNoteShare(pinId) {
   if (_sharedNoteIds.has(id)) {
     await LiveTrack.unpublishNote(id);
     _sharedNoteIds.delete(id);
+    LiveTrack.publishPrivateNote({ ...pin, shared: false }); // update private record
     showToast('Note un-shared');
   } else {
     const ok = await LiveTrack.publishNote(pin, currentUser.email);
-    if (ok) { _sharedNoteIds.add(id); showToast('📡 Note shared'); }
-    else showToast('Share failed');
+    if (ok) {
+      _sharedNoteIds.add(id);
+      LiveTrack.publishPrivateNote({ ...pin, shared: true }); // update private record
+      showToast('📡 Note shared');
+    } else showToast('Share failed');
   }
   renderCustomPins(Waypoints.getCustom());
+}
+
+async function togglePhotoShare(photoId) {
+  const id    = String(photoId);
+  const photo = Photos.getAll().find(p => String(p.id) === id);
+  if (!photo) return;
+  if (_sharedPhotoIds.has(id)) {
+    await LiveTrack.unpublishPhoto(id);
+    _sharedPhotoIds.delete(id);
+    LiveTrack.publishPrivatePhoto({ ...photo, shared: false });
+    showToast('Photo un-shared');
+  } else {
+    const ok = await LiveTrack.publishSharedPhoto({ ...photo, owner: currentUser.email });
+    if (ok) {
+      _sharedPhotoIds.add(id);
+      LiveTrack.publishPrivatePhoto({ ...photo, shared: true });
+      showToast('📡 Photo shared');
+    } else showToast('Share failed — check Firebase rules');
+  }
+  renderPhotoList(Photos.getAll());
+}
+window.togglePhotoShare = togglePhotoShare;
+
+// Restore private notes + photos from Firebase after login
+async function restorePrivateData() {
+  // Notes
+  const notes = await LiveTrack.loadPrivateNotes();
+  notes.forEach(n => {
+    Waypoints.loadCustomPin(n);           // silent — skips duplicates already in localStorage
+    if (n.shared) _sharedNoteIds.add(String(n.id));
+  });
+  _prevPinIds = new Set(Waypoints.getCustom().map(p => String(p.id)));
+  if (notes.length) { renderCustomPins(Waypoints.getCustom()); refreshNotesFab(); }
+
+  // Photos
+  const photos = await LiveTrack.loadPrivatePhotos();
+  photos.forEach(p => {
+    Photos.addFromData(p);               // silent — skips duplicates
+    if (p.shared) _sharedPhotoIds.add(String(p.id));
+  });
+  _prevPhotoIds = new Set(Photos.getAll().map(p => String(p.id)));
+  if (photos.length) { renderPhotoList(Photos.getAll()); refreshPhotoFab(); }
 }
 
 function exportPinsExcel() {
@@ -1074,12 +1146,26 @@ function initPhotosUI() {
   });
 
   Photos.onChange(photos => {
+    const newIds = new Set(photos.map(p => String(p.id)));
+    if (!currentUser.isGuest) {
+      // Detect added photos → save to private Firebase (NOT auto-shared)
+      photos.forEach(p => {
+        if (!_prevPhotoIds.has(String(p.id))) LiveTrack.publishPrivatePhoto(p);
+      });
+      // Detect removed photos → delete from private and shared Firebase
+      for (const id of _prevPhotoIds) {
+        if (!newIds.has(id)) {
+          LiveTrack.unpublishPrivatePhoto(id);
+          if (_sharedPhotoIds.has(id)) {
+            LiveTrack.unpublishPhoto(id);
+            _sharedPhotoIds.delete(id);
+          }
+        }
+      }
+    }
+    _prevPhotoIds = newIds;
     renderPhotoList(photos);
-    // Show FAB when local photos exist; observer photos handled in startPhotoObserver
     refreshPhotoFab();
-    // Push to Firebase so observers see the photos too
-    LiveTrack.publishPhotos(photos, currentUser.email)
-      .catch(e => console.error('[Photos] Firebase publish error:', e.message));
   });
 
   async function handlePhotoFiles(files) {
@@ -1113,6 +1199,10 @@ function renderPhotoList(photos) {
       } catch(_) { return ''; }
     })() : '';
     const coordStr = `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
+    const isShared = _sharedPhotoIds.has(String(p.id));
+    const shareStyle = isShared
+      ? 'background:rgba(4,55,242,.15);color:#0437F2;border:1px solid #0437F2;'
+      : 'background:var(--bg4);color:var(--text2);border:1px solid var(--border2);';
     el.innerHTML = `
       <img class="photo-thumb" src="${p.thumb}" alt="${p.name}" />
       <div class="photo-item-info">
@@ -1121,6 +1211,9 @@ function renderPhotoList(photos) {
       </div>
       <div class="photo-item-actions">
         <button data-action="fly" data-id="${p.id}" title="Jump to on map">🎯</button>
+        <button onclick="togglePhotoShare(${p.id})"
+          style="font-size:.65rem;padding:2px 6px;border-radius:5px;cursor:pointer;${shareStyle}font-family:var(--sans);font-weight:700"
+          title="${isShared ? 'Unshare photo' : 'Share photo'}">${isShared ? '⏹' : '📡'}</button>
         <button data-action="del" data-id="${p.id}" class="del-btn" title="Remove">✕</button>
       </div>`;
     // Use event delegation — no inline onclick, no outer card listener

@@ -143,6 +143,16 @@ const Waypoints = (() => {
     if (onChangeCb) onChangeCb(markers.filter(m => m.type==='custom'));
   }
 
+  // Silent restore from Firebase — does not trigger onChange or savePins
+  function loadCustomPin(data) {
+    if (!data.lat || !data.lon) return;
+    if (markers.find(m => String(m.id) === String(data.id))) return; // skip duplicates from localStorage
+    const id = data.id || (Date.now() * 1000 + Math.floor(Math.random() * 1000));
+    const marker = L.marker([data.lat, data.lon], { icon: makeIcon(CUSTOM_ICON_HTML) }).addTo(map);
+    marker.bindPopup(buildPinPopup(id, data.name || 'Note', data.note || '', data.lat, data.lon));
+    markers.push({ id, marker, type:'custom', name: data.name || 'Note', note: data.note || '', lat: data.lat, lon: data.lon, date: data.date || Date.now() });
+  }
+
   function clearAll() {
     markers.forEach(m => map.removeLayer(m.marker));
     markers.length = 0;
@@ -162,5 +172,5 @@ const Waypoints = (() => {
 
   function onChange(cb) { onChangeCb = cb; }
 
-  return { init, setAddMode, getAddMode, addCustomPin, addRouteWaypoints, clearRouteWaypoints, remove, clearAll, getCustom, exportGPX, onChange };
+  return { init, setAddMode, getAddMode, addCustomPin, loadCustomPin, addRouteWaypoints, clearRouteWaypoints, remove, clearAll, getCustom, exportGPX, onChange };
 })();

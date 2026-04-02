@@ -30,6 +30,9 @@ const LiveTrack = (() => {
   let activitiesRef    = null;   // multi-activity map
   let photosRef        = null;
   let notesRef         = null;
+  let ownerRef         = null;   // /owner/{userKey}
+  let ownerNotesRef    = null;   // /owner/{userKey}/notes
+  let ownerPhotosRef   = null;   // /owner/{userKey}/photos
   let isSharing        = false;
   let viewerListener   = null;
   let stravaListener      = null;
@@ -60,6 +63,112 @@ const LiveTrack = (() => {
       console.error('[LiveTrack] Init failed:', e.message);
       return false;
     }
+  }
+
+  // ── Owner private paths ───────────────────────────────────
+  // Call after init() once the user's email is known.
+  // userKey sanitises email for Firebase key restrictions.
+  function setOwner(email) {
+    if (!db || !email) return;
+    const key = email.replace(/[.#$\[\]@]/g, '_');
+    ownerRef      = db.ref(`/owner/${key}`);
+    ownerNotesRef  = ownerRef.child('notes');
+    ownerPhotosRef = ownerRef.child('photos');
+  }
+
+  // ── Private notes ─────────────────────────────────────────
+  async function publishPrivateNote(pin) {
+    if (!ownerNotesRef) return false;
+    try {
+      const id = String(pin.id).replace(/[.#$\[\]]/g, '_');
+      await ownerNotesRef.child(id).set({
+        id:     Number(pin.id),
+        lat:    parseFloat(pin.lat.toFixed(6)),
+        lon:    parseFloat(pin.lon.toFixed(6)),
+        name:   pin.name   || '',
+        note:   pin.note   || '',
+        date:   pin.date   || Date.now(),
+        shared: pin.shared || false,
+        ts:     Date.now(),
+      });
+      return true;
+    } catch(e) { console.warn('[LiveTrack] Private note save failed:', e.message); return false; }
+  }
+
+  async function unpublishPrivateNote(pinId) {
+    if (!ownerNotesRef) return;
+    const id = String(pinId).replace(/[.#$\[\]]/g, '_');
+    try { await ownerNotesRef.child(id).remove(); } catch(_) {}
+  }
+
+  async function loadPrivateNotes() {
+    if (!ownerNotesRef) return [];
+    try {
+      const snap = await ownerNotesRef.once('value');
+      const data = snap.val();
+      if (!data) return [];
+      return Object.values(data).filter(n => n && n.lat);
+    } catch(e) { console.warn('[LiveTrack] Load private notes failed:', e.message); return []; }
+  }
+
+  // ── Private photos ────────────────────────────────────────
+  async function publishPrivatePhoto(photo) {
+    if (!ownerPhotosRef) return false;
+    try {
+      const id    = String(photo.id).replace(/[.#$\[\]]/g, '_');
+      const thumb = photo.shareThumb || photo.thumb || '';
+      await ownerPhotosRef.child(id).set({
+        id:       Number(photo.id),
+        lat:      parseFloat(photo.lat.toFixed(6)),
+        lon:      parseFloat(photo.lon.toFixed(6)),
+        name:     photo.name     || '',
+        note:     photo.note     || '',
+        thumb,
+        datetime: photo.datetime || '',
+        shared:   photo.shared   || false,
+        ts:       Date.now(),
+      });
+      return true;
+    } catch(e) { console.warn('[LiveTrack] Private photo save failed:', e.message); return false; }
+  }
+
+  async function unpublishPrivatePhoto(photoId) {
+    if (!ownerPhotosRef) return;
+    const id = String(photoId).replace(/[.#$\[\]]/g, '_');
+    try { await ownerPhotosRef.child(id).remove(); } catch(_) {}
+  }
+
+  async function loadPrivatePhotos() {
+    if (!ownerPhotosRef) return [];
+    try {
+      const snap = await ownerPhotosRef.once('value');
+      const data = snap.val();
+      if (!data) return [];
+      return Object.entries(data)
+        .filter(([, p]) => p && p.lat && p.thumb)
+        .map(([key, p]) => ({ ...p, firebaseId: key }));
+    } catch(e) { console.warn('[LiveTrack] Load private photos failed:', e.message); return []; }
+  }
+
+  // Publish a single photo to /shared/photos (explicit share action)
+  async function publishSharedPhoto(photo) {
+    if (!photosRef) return false;
+    try {
+      const id    = String(photo.id).replace(/[.#$\[\]]/g, '_');
+      const thumb = photo.shareThumb || photo.thumb || '';
+      await photosRef.child(id).set({
+        lat:      parseFloat(photo.lat.toFixed(6)),
+        lon:      parseFloat(photo.lon.toFixed(6)),
+        name:     photo.name     || '',
+        note:     photo.note     || '',
+        thumb,
+        datetime: photo.datetime || '',
+        owner:    photo.owner    || '',
+        ts:       Date.now(),
+      });
+      _publishedPhotoIds.add(id);
+      return true;
+    } catch(e) { console.warn('[LiveTrack] Shared photo publish failed:', e.message); return false; }
   }
 
   // ── Hiker flag ────────────────────────────────────────────
@@ -313,12 +422,14 @@ const LiveTrack = (() => {
   function isSharingNow() { return isSharing; }
 
   return {
-    init,
+    init, setOwner,
     setIsHiker, getIsHiker,
     startSharing, stopSharing, pushPosition,
     publishStrava, unpublishStrava, unpublishAllStrava,
     publishNote, unpublishNote, subscribeNotes,
-    publishPhotos, unpublishPhoto,
+    publishPhotos, unpublishPhoto, publishSharedPhoto,
+    publishPrivateNote, unpublishPrivateNote, loadPrivateNotes,
+    publishPrivatePhoto, unpublishPrivatePhoto, loadPrivatePhotos,
     subscribeViewer, unsubscribeViewer,
     subscribeStrava, unsubscribeStrava,
     subscribePhotos, unsubscribePhotos,
