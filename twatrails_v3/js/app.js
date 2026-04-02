@@ -964,12 +964,14 @@ function fitBothRoutes() {
 // ── Strava share to Firebase ─────────────────────────────────────
 function buildStravaPopup(stats) {
   if (!stats) return '<b style="color:#0437F2">Strava Activity</b>';
+  const ownerStr = stats.owner ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:#4ade80;margin-top:3px">👤 ${stats.owner.split('@')[0]}</div>` : '';
   return `
     <div style="font-family:Syne,sans-serif;min-width:190px">
       <b style="font-size:.88rem;color:#0437F2">🏃 ${stats.name || stats.name}</b><br/>
       <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#aaa;margin-top:5px">
         ${fmtDist(stats.distance || 0)} · ↑${Math.round(stats.elevation||0)}m · ${fmtTime(stats.movingTime || stats.time || 0)}
       </div>
+      ${ownerStr}
     </div>`;
 }
 
@@ -990,7 +992,7 @@ async function toggleStravaShare() {
     if (state.stravaPolyline && state.stravaPolyline.isPopupOpen()) {
       state.stravaPolyline.setPopupContent(buildStravaPopup(state.stravaStats, 'pending'));
     }
-    const ok = await LiveTrack.publishStrava(state.stravaStats.latlngs, state.stravaStats);
+    const ok = await LiveTrack.publishStrava(state.stravaStats.latlngs, state.stravaStats, currentUser.email);
     if (ok) {
       updateStravaShareBtn(true);
       showToast('📡 Strava route shared with observers');
@@ -1029,7 +1031,7 @@ function startStravaObserver() {
         color: '#0437F2', weight: 4, opacity: 0.88, dashArray: '7 4', lineJoin: 'round',
       }).addTo(state.map);
       const name = data.name || 'Strava Activity';
-      pl.bindPopup(buildStravaPopup({ name, distance: data.distance, elevation: data.elevation, movingTime: data.time }));
+      pl.bindPopup(buildStravaPopup({ name, distance: data.distance, elevation: data.elevation, movingTime: data.time, owner: data.owner }));
       sharedStravaState.polylines.push(pl);
     });
 
@@ -1092,6 +1094,7 @@ function startPhotoObserver() {
 
       const title    = p.note || p.name || '';
       const subtitle = p.note && p.name ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:#888;margin-top:1px">${p.name}</div>` : '';
+      const ownerStr = p.owner ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:#4ade80;margin-top:2px">👤 ${p.owner.split('@')[0]}</div>` : '';
       // Show Remove button if this user owns the photo (owner match) OR entry has no owner (pre-owner data) and user is logged in
       const canRemove = !currentUser.isGuest && (p.owner === currentUser.email || !p.owner);
       const removeBtn = canRemove
@@ -1104,6 +1107,7 @@ function startPhotoObserver() {
           <img src="${thumbSrc}" style="width:100%;border-radius:6px;margin-bottom:6px;display:block"/>
           <b style="font-size:.85rem">${title}</b>
           ${subtitle}
+          ${ownerStr}
           <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#666;margin-top:4px">
             ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
           </div>
@@ -1476,9 +1480,11 @@ function startNotesObserver() {
         iconSize:[22,22], iconAnchor:[11,22], popupAnchor:[0,-24],
       });
       const marker = L.marker([n.lat, n.lon], { icon, zIndexOffset: 480 }).addTo(state.map);
+      const noteOwnerStr = n.owner ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:#4ade80;margin-top:3px">👤 ${n.owner.split('@')[0]}</div>` : '';
       marker.bindPopup(`<div style="font-family:Syne,sans-serif;min-width:160px">
         <b style="color:#0437F2;font-size:.88rem">📍 ${n.name || 'Note'}</b><br/>
         ${n.note ? `<span style="font-size:.75rem;color:#555;line-height:1.4;display:block;margin-top:3px">${n.note}</span>` : ''}
+        ${noteOwnerStr}
         <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#888;margin-top:4px">
           ${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}
         </div></div>`);
@@ -1569,6 +1575,8 @@ async function initLiveTrack() {
   // observers so dedup runs against already-populated local arrays (prevents doubling)
   if (!currentUser.isGuest) {
     LiveTrack.setOwner(currentUser.email);
+    Photos.setOwner(currentUser.email);
+    Waypoints.setOwner(currentUser.email);
     await restorePrivateData();
   }
 

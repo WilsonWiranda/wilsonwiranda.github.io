@@ -12,6 +12,9 @@ const Waypoints = (() => {
   const markers = [];     // { id, marker, type:'custom'|'route', name, note }
   let addMode   = false;
   let onChangeCb = null;
+  let _ownerEmail = null;
+
+  function setOwner(email) { _ownerEmail = email; }
 
   const ROUTE_ICON_HTML = (color) => `
     <div style="
@@ -36,10 +39,12 @@ const Waypoints = (() => {
   const PINS_KEY = 'p1150_custom_pins';
 
   function buildPinPopup(id, name, note, lat, lon) {
+    const ownerStr = _ownerEmail ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:#4ade80;margin-top:3px">👤 ${_ownerEmail.split('@')[0]}</div>` : '';
     return `
       <div style="font-family:Syne,sans-serif;min-width:150px">
         <b style="font-size:.88rem;color:#38bdf8">📍 ${name}</b><br/>
         ${note ? `<div style="font-size:.78rem;color:#ccc;margin-top:4px;line-height:1.45;white-space:pre-wrap">${note}</div>` : ''}
+        ${ownerStr}
         <small style="color:#888;display:block;margin-top:4px">${lat.toFixed(5)}, ${lon.toFixed(5)}</small>
         <button onclick="Waypoints.remove(${id})" style="margin-top:7px;font-size:.72rem;background:#f87171;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;width:100%">Remove</button>
       </div>`;
@@ -172,5 +177,5 @@ const Waypoints = (() => {
 
   function onChange(cb) { onChangeCb = cb; }
 
-  return { init, setAddMode, getAddMode, addCustomPin, loadCustomPin, addRouteWaypoints, clearRouteWaypoints, remove, clearAll, getCustom, exportGPX, onChange };
+  return { init, setAddMode, getAddMode, setOwner, addCustomPin, loadCustomPin, addRouteWaypoints, clearRouteWaypoints, remove, clearAll, getCustom, exportGPX, onChange };
 })();
