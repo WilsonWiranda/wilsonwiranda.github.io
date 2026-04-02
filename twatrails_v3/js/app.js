@@ -984,16 +984,33 @@ function startStravaObserver() {
 // ── Observer: receive shared photos from Firebase ────────────────
 const sharedPhotoState = { markers: [] };
 
+// Global handler for removing a shared photo — called from observer popup onclick
+window.removeSharedPhoto = function(firebaseId) {
+  LiveTrack.unpublishPhoto(firebaseId);
+  const idx = sharedPhotoState.markers.findIndex(m => m._fbId === firebaseId);
+  if (idx !== -1) {
+    state.map.removeLayer(sharedPhotoState.markers[idx]);
+    sharedPhotoState.markers.splice(idx, 1);
+  }
+  refreshPhotoFab();
+};
+
 function startPhotoObserver() {
   LiveTrack.subscribePhotos(photos => {
-    // Remove old observer markers
     sharedPhotoState.markers.forEach(m => state.map.removeLayer(m));
     sharedPhotoState.markers = [];
     if (!photos || !photos.length) { refreshPhotoFab(); return; }
-    // Skip photos owned by this user if they have local copies loaded (avoids double marker)
-    const hasLocalPhotos = Photos.getAll().length > 0;
+
+    // Dedup: skip Firebase entry if it belongs to this user AND a local copy is loaded
+    const localPhotos  = Photos.getAll();
+    const localKeys    = new Set(localPhotos.map(p => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`));
+    const hasLocalCopy = p =>
+      (p.owner && p.owner === currentUser.email && localPhotos.length > 0) ||
+      (!p.owner && !currentUser.isGuest && localPhotos.length > 0 && localKeys.has(`${p.lat.toFixed(4)},${p.lon.toFixed(4)}`));
+
     photos.forEach(p => {
-      if (hasLocalPhotos && p.owner && p.owner === currentUser.email) return;
+      if (hasLocalCopy(p)) return;  // local marker with Remove button already covers it
+
       const thumbSrc = p.thumb || p.shareThumb || '';
       const icon = L.divIcon({
         className: '',
@@ -1004,8 +1021,17 @@ function startPhotoObserver() {
         iconSize: [48, 56], iconAnchor: [24, 56], popupAnchor: [0, -58],
       });
       const marker = L.marker([p.lat, p.lon], { icon, zIndexOffset: 490 }).addTo(state.map);
+      marker._fbId = p.firebaseId;
+
       const title    = p.note || p.name || '';
       const subtitle = p.note && p.name ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:#888;margin-top:1px">${p.name}</div>` : '';
+      // Show Remove button if this user owns the photo (owner match) OR entry has no owner (pre-owner data) and user is logged in
+      const canRemove = !currentUser.isGuest && (p.owner === currentUser.email || !p.owner);
+      const removeBtn = canRemove
+        ? `<button onclick="removeSharedPhoto('${p.firebaseId}')"
+             style="margin-top:7px;font-size:.7rem;background:#f87171;color:#fff;border:none;
+                    border-radius:4px;padding:3px 9px;cursor:pointer;width:100%">Remove</button>`
+        : '';
       marker.bindPopup(`
         <div style="font-family:Syne,sans-serif;min-width:180px">
           <img src="${thumbSrc}" style="width:100%;border-radius:6px;margin-bottom:6px;display:block"/>
@@ -1014,6 +1040,7 @@ function startPhotoObserver() {
           <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#666;margin-top:4px">
             ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}
           </div>
+          ${removeBtn}
         </div>`);
       sharedPhotoState.markers.push(marker);
     });

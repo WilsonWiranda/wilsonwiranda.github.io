@@ -33,8 +33,47 @@ const Waypoints = (() => {
     return L.divIcon({ className:'', html, iconSize:[22,22], iconAnchor:[11,22], popupAnchor:[0,-22] });
   }
 
+  const PINS_KEY = 'p1150_custom_pins';
+
+  function buildPinPopup(id, name, note, lat, lon) {
+    return `
+      <div style="font-family:Syne,sans-serif;min-width:150px">
+        <b style="font-size:.88rem;color:#38bdf8">📍 ${name}</b><br/>
+        ${note ? `<div style="font-size:.78rem;color:#ccc;margin-top:4px;line-height:1.45;white-space:pre-wrap">${note}</div>` : ''}
+        <small style="color:#888;display:block;margin-top:4px">${lat.toFixed(5)}, ${lon.toFixed(5)}</small>
+        <button onclick="Waypoints.remove(${id})" style="margin-top:7px;font-size:.72rem;background:#f87171;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;width:100%">Remove</button>
+      </div>`;
+  }
+
+  function savePins() {
+    try {
+      const data = markers
+        .filter(m => m.type === 'custom')
+        .map(m => ({ id: m.id, name: m.name, note: m.note, lat: m.lat, lon: m.lon, date: m.date }));
+      localStorage.setItem(PINS_KEY, JSON.stringify(data));
+    } catch (_) {}
+  }
+
+  function restorePins() {
+    try {
+      const raw = localStorage.getItem(PINS_KEY);
+      if (!raw) return;
+      const pins = JSON.parse(raw);
+      if (!Array.isArray(pins)) return;
+      pins.forEach(p => {
+        if (!p.lat || !p.lon) return;
+        const marker = L.marker([p.lat, p.lon], { icon: makeIcon(CUSTOM_ICON_HTML) }).addTo(map);
+        marker.bindPopup(buildPinPopup(p.id, p.name, p.note || '', p.lat, p.lon));
+        markers.push({ id: p.id, marker, type: 'custom', name: p.name, note: p.note || '', lat: p.lat, lon: p.lon, date: p.date });
+      });
+      const custom = markers.filter(m => m.type === 'custom');
+      if (custom.length && onChangeCb) onChangeCb(custom);
+    } catch (_) {}
+  }
+
   function init(leafletMap) {
     map = leafletMap;
+    restorePins();
 
     map.on('click', e => {
       if (!addMode) return;
@@ -66,16 +105,9 @@ const Waypoints = (() => {
   function addCustomPin(lat, lon, name, note) {
     const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     const marker = L.marker([lat, lon], { icon: makeIcon(CUSTOM_ICON_HTML) }).addTo(map);
-    marker.bindPopup(`
-      <div style="font-family:Syne,sans-serif;min-width:150px">
-        <b style="font-size:.88rem;color:#38bdf8">📍 ${name}</b><br/>
-        ${note ? `<div style="font-size:.78rem;color:#ccc;margin-top:4px;line-height:1.45;white-space:pre-wrap">${note}</div>` : ''}
-        <small style="color:#888;display:block;margin-top:4px">${lat.toFixed(5)}, ${lon.toFixed(5)}</small>
-        <button onclick="Waypoints.remove(${id})" style="margin-top:7px;font-size:.72rem;background:#f87171;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;width:100%">Remove</button>
-      </div>
-    `).openPopup();
-
-    markers.push({ id, marker, type:'custom', name, note, lat, lon, date: Date.now() });
+    marker.bindPopup(buildPinPopup(id, name, note || '', lat, lon)).openPopup();
+    markers.push({ id, marker, type:'custom', name, note: note || '', lat, lon, date: Date.now() });
+    savePins();
     if (onChangeCb) onChangeCb(markers.filter(m => m.type==='custom'));
     return id;
   }
@@ -107,6 +139,7 @@ const Waypoints = (() => {
     if (idx === -1) return;
     map.removeLayer(markers[idx].marker);
     markers.splice(idx, 1);
+    savePins();
     if (onChangeCb) onChangeCb(markers.filter(m => m.type==='custom'));
   }
 

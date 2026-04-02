@@ -247,13 +247,21 @@ const LiveTrack = (() => {
     if (!photosRef) return;
     photosListener = photosRef.on('value', snap => {
       const data = snap.val();
-      // data is now { photoId: { lat, lon, thumb, ... }, ... }
       if (!data) { cb([]); return; }
-      const photos = Object.values(data).filter(p => p && p.lat && p.thumb);
+      // Include Firebase key as `firebaseId` so Remove buttons can target the right node
+      const photos = Object.entries(data)
+        .filter(([, p]) => p && p.lat && p.thumb)
+        .map(([key, p]) => ({ ...p, firebaseId: key }));
       cb(photos);
     }, err => {
       console.warn('[LiveTrack] Photos listener error:', err.message);
     });
+  }
+
+  async function unpublishPhoto(photoId) {
+    if (!photosRef) return;
+    const id = String(photoId);
+    try { await photosRef.child(id).remove(); _publishedPhotoIds.delete(id); } catch (_) {}
   }
 
   function unsubscribePhotos() {
@@ -310,7 +318,7 @@ const LiveTrack = (() => {
     startSharing, stopSharing, pushPosition,
     publishStrava, unpublishStrava, unpublishAllStrava,
     publishNote, unpublishNote, subscribeNotes,
-    publishPhotos,
+    publishPhotos, unpublishPhoto,
     subscribeViewer, unsubscribeViewer,
     subscribeStrava, unsubscribeStrava,
     subscribePhotos, unsubscribePhotos,
