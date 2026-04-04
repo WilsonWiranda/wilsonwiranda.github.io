@@ -1148,8 +1148,8 @@ function startStravaObserver() {
 
     activities.forEach(data => {
       if (!data.latlngs || !data.latlngs.length) return;
-      // Skip activities the current user already has displayed locally (avoids double polyline)
-      if (data.firebaseId && state.stravaSharedIds.has(data.firebaseId)) return;
+      // Skip only if this activity is currently loaded locally (avoids double polyline)
+      if (data.firebaseId && state.stravaPolylineMap[data.firebaseId]) return;
       const pl = L.polyline(data.latlngs, {
         color: '#0437F2', weight: 4, opacity: 0.88, dashArray: '7 4', lineJoin: 'round',
       }).addTo(state.map);
