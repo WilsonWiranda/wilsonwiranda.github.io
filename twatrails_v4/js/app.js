@@ -1116,8 +1116,7 @@ const sharedStravaState = { polylines: [] };
 
 function startStravaObserver() {
   LiveTrack.subscribeStrava(activities => {
-    console.log('[StravaObs] fired — activities:', activities?.length, '| currentUser.email:', currentUser.email, '| stravaPolylineMap keys:', Object.keys(state.stravaPolylineMap));
-    // Remove old polylines
+    // Remove old observer polylines
     sharedStravaState.polylines = sharedStravaState.polylines || [];
     sharedStravaState.polylines.forEach(p => state.map.removeLayer(p));
     sharedStravaState.polylines = [];
@@ -1147,24 +1146,23 @@ function startStravaObserver() {
       }
     }
 
+    const newPolylines = [];
     activities.forEach(data => {
-      const isOwn = data.owner && currentUser.email && data.owner === currentUser.email;
-      console.log('[StravaObs] activity:', data.firebaseId, 'owner:', data.owner, 'isOwn:', isOwn,
-        'latlngs:', Array.isArray(data.latlngs) ? data.latlngs.length : (typeof data.latlngs),
-        'inPolylineMap:', !!(data.firebaseId && state.stravaPolylineMap[data.firebaseId]));
-      // Firebase may return arrays-of-arrays as objects; normalize to array
-      const latlngsArr = Array.isArray(data.latlngs)
-        ? data.latlngs.map(pt => Array.isArray(pt) ? pt : Object.values(pt))
-        : Object.values(data.latlngs).map(pt => Array.isArray(pt) ? pt : Object.values(pt));
+      // Normalize latlngs — Firebase may return arrays-of-arrays as objects
+      const raw = data.latlngs;
+      if (!raw) return;
+      const latlngsArr = Array.isArray(raw)
+        ? raw.map(pt => Array.isArray(pt) ? pt : Object.values(pt))
+        : Object.values(raw).map(pt => Array.isArray(pt) ? pt : Object.values(pt));
       if (!latlngsArr.length) return;
-      // Skip only if this activity is currently loaded locally (avoids double polyline)
+      // Skip if already loaded locally (avoids double polyline)
       if (data.firebaseId && state.stravaPolylineMap[data.firebaseId]) return;
+
       const pl = L.polyline(latlngsArr, {
         color: '#0437F2', weight: 4, opacity: 0.88, dashArray: '7 4', lineJoin: 'round',
       }).addTo(state.map);
       const name = data.name || 'Strava Activity';
       pl.bindPopup(buildStravaPopup({ name, distance: data.distance, elevation: data.elevation, movingTime: data.time, owner: data.owner }));
-      // Show elevation profile when clicking a shared activity (if altitude data available)
       pl.on('click', () => {
         const alts = data.alts ? (Array.isArray(data.alts) ? data.alts : Object.values(data.alts)) : [];
         if (alts.length && latlngsArr.length) {
@@ -1175,16 +1173,29 @@ function startStravaObserver() {
           state.map.invalidateSize(); positionFABs();
         }
       });
-      sharedStravaState.polylines.push(pl);
+      newPolylines.push(pl);
     });
+    sharedStravaState.polylines = newPolylines;
 
-    // Toast only when list changes
+    // On initial load (new activities detected), zoom map to show all shared routes
+    // — but only when GPS tracking is not active so we don't disrupt navigation
     const newKey = activities.map(a => a.ts).sort().join(',');
     const prev   = localStorage.getItem('tm_strava_obs_key');
     if (prev !== newKey) {
       localStorage.setItem('tm_strava_obs_key', newKey);
       if (activities.length === 1) showToast(`📡 Hiker shared: ${activities[0].name}`);
       else if (activities.length > 1) showToast(`📡 Hiker shared ${activities.length} routes`);
+
+      // Fit map to all shared polylines (observer + locally-loaded) so user can see them
+      if (!state.gpsActive && newPolylines.length) {
+        const allPl = [
+          ...newPolylines,
+          ...Object.values(state.stravaPolylineMap).map(e => e.polyline),
+        ];
+        try {
+          state.map.fitBounds(L.featureGroup(allPl).getBounds(), { padding: [50, 50], maxZoom: 14 });
+        } catch (_) {}
+      }
     }
 
     // Refresh Stats + Compare with new data
