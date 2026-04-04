@@ -68,7 +68,7 @@ const Waypoints = (() => {
       pins.forEach(p => {
         if (!p.lat || !p.lon) return;
         const marker = L.marker([p.lat, p.lon], { icon: makeIcon(CUSTOM_ICON_HTML) }).addTo(map);
-        marker.bindPopup(buildPinPopup(p.id, p.name, p.note || '', p.lat, p.lon));
+        marker.bindPopup(() => buildPinPopup(p.id, p.name, p.note || '', p.lat, p.lon));
         markers.push({ id: p.id, marker, type: 'custom', name: p.name, note: p.note || '', lat: p.lat, lon: p.lon, date: p.date });
       });
       const custom = markers.filter(m => m.type === 'custom');
@@ -110,7 +110,7 @@ const Waypoints = (() => {
   function addCustomPin(lat, lon, name, note) {
     const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     const marker = L.marker([lat, lon], { icon: makeIcon(CUSTOM_ICON_HTML) }).addTo(map);
-    marker.bindPopup(buildPinPopup(id, name, note || '', lat, lon)).openPopup();
+    marker.bindPopup(() => buildPinPopup(id, name, note || '', lat, lon)).openPopup();
     markers.push({ id, marker, type:'custom', name, note: note || '', lat, lon, date: Date.now() });
     savePins();
     if (onChangeCb) onChangeCb(markers.filter(m => m.type==='custom'));
@@ -154,7 +154,7 @@ const Waypoints = (() => {
     if (markers.find(m => String(m.id) === String(data.id))) return; // skip duplicates from localStorage
     const id = data.id || (Date.now() * 1000 + Math.floor(Math.random() * 1000));
     const marker = L.marker([data.lat, data.lon], { icon: makeIcon(CUSTOM_ICON_HTML) }).addTo(map);
-    marker.bindPopup(buildPinPopup(id, data.name || 'Note', data.note || '', data.lat, data.lon));
+    marker.bindPopup(() => buildPinPopup(id, data.name || 'Note', data.note || '', data.lat, data.lon));
     markers.push({ id, marker, type:'custom', name: data.name || 'Note', note: data.note || '', lat: data.lat, lon: data.lon, date: data.date || Date.now() });
   }
 

@@ -873,6 +873,7 @@ function loadStreamsOnMap(activity, streams, itemEl) {
     points:    latlngs.length,
     latlngs,
     alts,
+    owner:     currentUser.email || '',
   };
 
   const polyline = L.polyline(latlngs, {
