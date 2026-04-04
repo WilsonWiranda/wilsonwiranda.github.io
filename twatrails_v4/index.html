@@ -884,7 +884,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 /* ── Language / i18n ── */
 const LANG = {
   en: {
-    openApp:'Open App', searchPlace:'Search place…',
+    openApp:'Open App', openAppGuest:'Open App as Guest 👁', searchPlace:'Search place…',
     tabRoutes:'Routes', tabLive:'Live', tabWaypoint:'Stages',
     tabNotes:'My Notes', tabHiker:'My Strava', tabCompare:'Compare',
     tabStats:'Stats', tabPhotos:'My Photo',
@@ -903,7 +903,7 @@ const LANG = {
     startIn:'Start in', lifeIsGood:'Life is GOOD!',
   },
   es: {
-    openApp:'Abrir App', searchPlace:'Buscar lugar…',
+    openApp:'Abrir App', openAppGuest:'Abrir App como Invitado 👁', searchPlace:'Buscar lugar…',
     tabRoutes:'Rutas', tabLive:'En Vivo', tabWaypoint:'Etapas',
     tabNotes:'Mis Notas', tabHiker:'Mi Strava', tabCompare:'Comparar',
     tabStats:'Stats', tabPhotos:'Mi Foto',
@@ -922,7 +922,7 @@ const LANG = {
     startIn:'Empieza en', lifeIsGood:'¡La vida es BUENA!',
   },
   ca: {
-    openApp:'Obrir App', searchPlace:'Cerca un lloc…',
+    openApp:'Obrir App', openAppGuest:'Obrir App com a Convidat 👁', searchPlace:'Cerca un lloc…',
     tabRoutes:'Rutes', tabLive:'En Viu', tabWaypoint:'Etapes',
     tabNotes:'Les Meves Notes', tabHiker:'El Meu Strava', tabCompare:'Comparar',
     tabStats:'Stats', tabPhotos:'La Meva Foto',
@@ -956,6 +956,8 @@ function setLang(lang) {
   if (sub) sub.textContent = L.lifeIsGood;
   const openBtn = document.getElementById('splashEnter');
   if (openBtn) openBtn.textContent = L.openApp;
+  const guestBtn = document.getElementById('splashGuest');
+  if (guestBtn) guestBtn.textContent = L.openAppGuest;
   const cdLabel = document.querySelector('.countdown-label');
   if (cdLabel) cdLabel.textContent = L.startIn;
 

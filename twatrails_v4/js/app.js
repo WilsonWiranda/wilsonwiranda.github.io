@@ -926,6 +926,7 @@ async function toggleActivityShare(act, itemEl) {
     if (state.stravaPolyline && state.stravaStats?.stravaId === act.id) {
       state.stravaPolyline.setStyle({ color: '#f97316' });
     }
+    $('btnUnshareAllStrava').classList.toggle('hidden', state.stravaSharedIds.size === 0);
     showToast(`${act.name} un-shared`);
   } else {
     // Not shared → load streams then share
@@ -957,6 +958,7 @@ async function toggleActivityShare(act, itemEl) {
         if (state.stravaPolyline && state.stravaStats?.stravaId === act.id) {
           state.stravaPolyline.setStyle({ color: '#0437F2' });
         }
+        $('btnUnshareAllStrava').classList.remove('hidden');
         showToast(`📡 ${act.name} shared`);
       } else {
         btn.textContent = '📡 Share'; btn.disabled = false;
@@ -1080,6 +1082,22 @@ function startStravaObserver() {
       updateStatsTab();
       updateCompareTab();
       return;
+    }
+
+    // Repopulate stravaSharedIds from Firebase on page reload (for current user's activities)
+    const prevSize = state.stravaSharedIds.size;
+    activities.forEach(data => {
+      if (data.owner && currentUser.email && data.owner === currentUser.email) {
+        const fbId = data.firebaseId || String(data.stravaId || '');
+        if (fbId) state.stravaSharedIds.add(fbId);
+      }
+    });
+    if (state.stravaSharedIds.size > 0) {
+      $('btnUnshareAllStrava').classList.remove('hidden');
+      // Re-render activity list if newly discovered shared IDs (e.g. page reload)
+      if (state.stravaSharedIds.size > prevSize && $('activityList').children.length > 0) {
+        loadStravaActivities();
+      }
     }
 
     activities.forEach(data => {
