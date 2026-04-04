@@ -1116,6 +1116,7 @@ const sharedStravaState = { polylines: [] };
 
 function startStravaObserver() {
   LiveTrack.subscribeStrava(activities => {
+    console.log('[StravaObs] fired — activities:', activities?.length, '| currentUser.email:', currentUser.email, '| stravaPolylineMap keys:', Object.keys(state.stravaPolylineMap));
     // Remove old polylines
     sharedStravaState.polylines = sharedStravaState.polylines || [];
     sharedStravaState.polylines.forEach(p => state.map.removeLayer(p));
@@ -1147,19 +1148,27 @@ function startStravaObserver() {
     }
 
     activities.forEach(data => {
-      if (!data.latlngs || !data.latlngs.length) return;
+      const isOwn = data.owner && currentUser.email && data.owner === currentUser.email;
+      console.log('[StravaObs] activity:', data.firebaseId, 'owner:', data.owner, 'isOwn:', isOwn,
+        'latlngs:', Array.isArray(data.latlngs) ? data.latlngs.length : (typeof data.latlngs),
+        'inPolylineMap:', !!(data.firebaseId && state.stravaPolylineMap[data.firebaseId]));
+      // Firebase may return arrays-of-arrays as objects; normalize to array
+      const latlngsArr = Array.isArray(data.latlngs)
+        ? data.latlngs.map(pt => Array.isArray(pt) ? pt : Object.values(pt))
+        : Object.values(data.latlngs).map(pt => Array.isArray(pt) ? pt : Object.values(pt));
+      if (!latlngsArr.length) return;
       // Skip only if this activity is currently loaded locally (avoids double polyline)
       if (data.firebaseId && state.stravaPolylineMap[data.firebaseId]) return;
-      const pl = L.polyline(data.latlngs, {
+      const pl = L.polyline(latlngsArr, {
         color: '#0437F2', weight: 4, opacity: 0.88, dashArray: '7 4', lineJoin: 'round',
       }).addTo(state.map);
       const name = data.name || 'Strava Activity';
       pl.bindPopup(buildStravaPopup({ name, distance: data.distance, elevation: data.elevation, movingTime: data.time, owner: data.owner }));
       // Show elevation profile when clicking a shared activity (if altitude data available)
       pl.on('click', () => {
-        const alts = data.alts || [];
-        if (alts.length && data.latlngs && data.latlngs.length) {
-          const rawCoords = data.latlngs.map((ll, i) => ({ lat: ll[0], lon: ll[1], ele: alts[i] || 0 }));
+        const alts = data.alts ? (Array.isArray(data.alts) ? data.alts : Object.values(data.alts)) : [];
+        if (alts.length && latlngsArr.length) {
+          const rawCoords = latlngsArr.map((ll, i) => ({ lat: ll[0], lon: ll[1], ele: alts[i] || 0 }));
           ElevationChart.setProfile(ElevationChart.buildProfileFromCoords(rawCoords));
           $('elevPanel').classList.remove('hidden');
           $('elevStats').textContent = `↑${Math.round(data.elevation || 0)}m · ${fmtDist(data.distance || 0)}`;
