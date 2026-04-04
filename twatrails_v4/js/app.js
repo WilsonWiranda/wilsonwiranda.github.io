@@ -13,6 +13,7 @@ const state = {
   loadedRoutes: [],
   activePreloaded: null,
   stravaPolyline: null,
+  stravaPolylineMap: {},   // actId → { polyline, stats, alts } — all currently loaded activities
   stravaStats: null,
   stravaActivities: [],   // all fetched — used by Stats tab
   stravaSharedIds: new Set(), // activity IDs currently shared with observers
@@ -793,7 +794,7 @@ function initStravaUI(callbackResult) {
   $('btnStravaRefresh').addEventListener('click', loadStravaActivities);
   $('btnUnshareAllStrava').addEventListener('click', unshareAllActivities);
   $('btnStravaLogout').addEventListener('click', () => { StravaAuth.logout(); clearStravaOverlay(true); showStravaDisconnected(); showToast('Disconnected'); });
-  $('btnClearStrava').addEventListener('click', () => clearStravaOverlay(true));
+  $('btnClearStrava').addEventListener('click', () => clearStravaOverlay(false));
   $('btnFitBoth').addEventListener('click', fitBothRoutes);
 }
 
@@ -851,24 +852,19 @@ async function loadStravaActivities() {
 }
 
 function loadStreamsOnMap(activity, streams, itemEl) {
-  // Draw streams onto map — shared by loadActivityOnMap and toggleActivityShare
-  document.querySelectorAll('.activity-item').forEach(el => el.classList.remove('active'));
-  if (itemEl) itemEl.classList.add('active');
-  clearStravaOverlay(false); // don't unpublish already-shared activities
+  // Draw streams onto map — supports multiple activities simultaneously
+  const actId   = String(activity.id);
   const latlngs = streams.latlng.data;
   const alts    = streams.altitude?.data || [];
-  state.stravaPolyline = L.polyline(latlngs, {
-    color:'#f97316', weight:4, opacity:0.88, dashArray:'7 4', lineJoin:'round'
-  }).addTo(state.map);
-  state.stravaPolyline.bindPopup(() => buildStravaPopup(state.stravaStats));
-  state.stravaPolyline.on('click', () => {
-    state.stravaPolyline.setPopupContent(buildStravaPopup(state.stravaStats));
-  });
-  state.map.fitBounds(state.stravaPolyline.getBounds(), { padding:[40,40] });
-  setTimeout(() => state.stravaPolyline.openPopup(), 600);
+
+  // If this activity is already on map, remove old polyline first (reload/refresh)
+  if (state.stravaPolylineMap[actId]) {
+    state.map.removeLayer(state.stravaPolylineMap[actId].polyline);
+  }
+
   let elevGain = 0;
   for (let i=1; i<alts.length; i++) { const d=alts[i]-alts[i-1]; if(d>0) elevGain+=d; }
-  state.stravaStats = {
+  const actStats = {
     stravaId:  activity.id,
     name:      activity.name,
     distance:  activity.distance,
@@ -878,24 +874,69 @@ function loadStreamsOnMap(activity, streams, itemEl) {
     latlngs,
     alts,
   };
-  $('stravaName').textContent = state.stravaStats.name;
-  $('stravaDist').textContent = fmtDist(state.stravaStats.distance);
-  $('stravaElev').textContent = `↑${Math.round(state.stravaStats.elevation)} m`;
-  $('stravaTime').textContent = fmtTime(state.stravaStats.movingTime);
+
+  const polyline = L.polyline(latlngs, {
+    color:'#f97316', weight:4, opacity:0.88, dashArray:'7 4', lineJoin:'round'
+  }).addTo(state.map);
+  polyline.bindPopup(() => buildStravaPopup(actStats));
+  polyline.on('click', () => {
+    polyline.setPopupContent(buildStravaPopup(actStats));
+    // Update info panel and elevation profile for this activity
+    $('stravaName').textContent = actStats.name;
+    $('stravaDist').textContent = fmtDist(actStats.distance);
+    $('stravaElev').textContent = `↑${Math.round(actStats.elevation)} m`;
+    $('stravaTime').textContent = fmtTime(actStats.movingTime);
+    $('stravaOverlayInfo').classList.remove('hidden');
+    if (actStats.alts && actStats.alts.length) {
+      const rawCoords = actStats.latlngs.map((ll,i) => ({ lat:ll[0], lon:ll[1], ele:actStats.alts[i]||0 }));
+      ElevationChart.setProfile(ElevationChart.buildProfileFromCoords(rawCoords));
+      $('elevPanel').classList.remove('hidden');
+      $('elevStats').textContent = `↑${Math.round(actStats.elevation)}m · ${fmtDist(actStats.distance)}`;
+      state.map.invalidateSize(); positionFABs();
+    }
+    state.stravaStats = actStats;
+    state.stravaPolyline = polyline;
+    document.querySelectorAll('.activity-item').forEach(el => el.classList.remove('active'));
+    if (itemEl) itemEl.classList.add('active');
+  });
+
+  state.stravaPolylineMap[actId] = { polyline, stats: actStats, alts };
+  state.stravaPolyline = polyline;
+  state.stravaStats    = actStats;
+
+  document.querySelectorAll('.activity-item').forEach(el => el.classList.remove('active'));
+  if (itemEl) itemEl.classList.add('active');
+
+  state.map.fitBounds(polyline.getBounds(), { padding:[40,40] });
+  setTimeout(() => polyline.openPopup(), 600);
+
+  $('stravaName').textContent = actStats.name;
+  $('stravaDist').textContent = fmtDist(actStats.distance);
+  $('stravaElev').textContent = `↑${Math.round(actStats.elevation)} m`;
+  $('stravaTime').textContent = fmtTime(actStats.movingTime);
   $('stravaOverlayInfo').classList.remove('hidden');
   if (alts.length) {
     const rawCoords = latlngs.map((ll,i) => ({ lat:ll[0], lon:ll[1], ele:alts[i]||0 }));
     ElevationChart.setProfile(ElevationChart.buildProfileFromCoords(rawCoords));
     $('elevPanel').classList.remove('hidden');
-    $('elevStats').textContent = `↑${Math.round(state.stravaStats.elevation)}m · ${fmtDist(state.stravaStats.distance)}`;
+    $('elevStats').textContent = `↑${Math.round(actStats.elevation)}m · ${fmtDist(actStats.distance)}`;
     state.map.invalidateSize(); positionFABs();
   }
 }
 
 async function loadActivityOnMap(activity, itemEl) {
+  const actId = String(activity.id);
   // Toggle off if this activity is already on the map
-  if (state.stravaStats && state.stravaStats.stravaId === activity.id && state.stravaPolyline) {
-    clearStravaOverlay(false);
+  if (state.stravaPolylineMap[actId]) {
+    state.map.removeLayer(state.stravaPolylineMap[actId].polyline);
+    delete state.stravaPolylineMap[actId];
+    if (itemEl) itemEl.classList.remove('active');
+    // If no activities remain, hide the overlay info panel
+    if (Object.keys(state.stravaPolylineMap).length === 0) {
+      state.stravaPolyline = null;
+      state.stravaStats    = null;
+      $('stravaOverlayInfo').classList.add('hidden');
+    }
     return;
   }
   document.querySelectorAll('.activity-item').forEach(el => el.classList.remove('active'));
@@ -923,8 +964,8 @@ async function toggleActivityShare(act, itemEl) {
     btn.classList.remove('shared');
     btn.title        = 'Share with observers';
     // Revert polyline to orange (loaded but not shared)
-    if (state.stravaPolyline && state.stravaStats?.stravaId === act.id) {
-      state.stravaPolyline.setStyle({ color: '#f97316' });
+    if (state.stravaPolylineMap[id]?.polyline) {
+      state.stravaPolylineMap[id].polyline.setStyle({ color: '#f97316' });
     }
     $('btnUnshareAllStrava').classList.toggle('hidden', state.stravaSharedIds.size === 0);
     showToast(`${act.name} un-shared`);
@@ -932,11 +973,11 @@ async function toggleActivityShare(act, itemEl) {
     // Not shared → load streams then share
     btn.textContent = '⏳…'; btn.disabled = true;
     try {
-      // Load streams if not already the active polyline for this activity
+      // Use already-loaded streams if activity is on map, otherwise fetch
       let latlngs = null, alts = [];
-      if (state.stravaStats && state.stravaStats.stravaId === act.id && state.stravaStats.latlngs) {
-        latlngs = state.stravaStats.latlngs;
-        alts    = state.stravaStats.alts || [];
+      if (state.stravaPolylineMap[id]) {
+        latlngs = state.stravaPolylineMap[id].stats.latlngs;
+        alts    = state.stravaPolylineMap[id].alts || [];
       } else {
         const streams = await StravaAuth.fetchActivityStreams(act.id);
         if (!streams.latlng?.data?.length) { showToast('No GPS data'); btn.textContent='📡 Share'; btn.disabled=false; return; }
@@ -955,8 +996,8 @@ async function toggleActivityShare(act, itemEl) {
         btn.classList.add('shared');
         btn.title       = 'Unshare';
         // Turn polyline blue when shared
-        if (state.stravaPolyline && state.stravaStats?.stravaId === act.id) {
-          state.stravaPolyline.setStyle({ color: '#0437F2' });
+        if (state.stravaPolylineMap[id]?.polyline) {
+          state.stravaPolylineMap[id].polyline.setStyle({ color: '#0437F2' });
         }
         $('btnUnshareAllStrava').classList.remove('hidden');
         showToast(`📡 ${act.name} shared`);
@@ -972,7 +1013,10 @@ async function toggleActivityShare(act, itemEl) {
 }
 
 function clearStravaOverlay(unpublish=true) {
-  if(state.stravaPolyline){state.map.removeLayer(state.stravaPolyline);state.stravaPolyline=null;state.stravaStats=null;}
+  Object.values(state.stravaPolylineMap).forEach(e => state.map.removeLayer(e.polyline));
+  state.stravaPolylineMap = {};
+  state.stravaPolyline    = null;
+  state.stravaStats       = null;
   $('stravaOverlayInfo').classList.add('hidden');
   document.querySelectorAll('.activity-item').forEach(el=>el.classList.remove('active'));
   if(unpublish) LiveTrack.unpublishStrava();
@@ -1017,8 +1061,9 @@ function updateCompareTab() {
 }
 
 function fitBothRoutes() {
-  if(!state.loadedRoutes.length||!state.stravaPolyline) return;
-  state.map.fitBounds(L.featureGroup([state.loadedRoutes[0].polyline,state.stravaPolyline]).getBounds(),{padding:[50,50]});
+  const stravaPolylines = Object.values(state.stravaPolylineMap).map(e => e.polyline);
+  if (!state.loadedRoutes.length || !stravaPolylines.length) return;
+  state.map.fitBounds(L.featureGroup([state.loadedRoutes[0].polyline, ...stravaPolylines]).getBounds(), { padding:[50,50] });
 }
 
 
