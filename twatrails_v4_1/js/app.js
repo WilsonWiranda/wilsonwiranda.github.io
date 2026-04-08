@@ -341,6 +341,7 @@ function togglePreloadedRoute(route, item) {
   item.classList.add('active');
   const badge = $(`badge-${route.id}`); if (badge) badge.textContent = 'Active';
   const polyline = L.polyline(route.latlngs, { color:route.color, weight:4, opacity:0.88, lineJoin:'round' }).addTo(state.map);
+  polyline.bringToBack();
   polyline.bindPopup(`<b>${route.name}</b><br/>${route.region} · ${fmtDist(route.distance)} · ↑${route.elevation}m<br/><small style="color:#aaa">${route.description}</small>`);
   state.map.fitBounds(polyline.getBounds(), { padding:[40,40] });
   const rawCoords = route.latlngs.map((ll,i) => ({ lat:ll[0], lon:ll[1], ele: route.elevations ? route.elevations[i] : 0 }));
@@ -879,6 +880,7 @@ function loadStreamsOnMap(activity, streams, itemEl) {
   const polyline = L.polyline(latlngs, {
     color:'#f97316', weight:4, opacity:0.88, dashArray:'7 4', lineJoin:'round'
   }).addTo(state.map);
+  polyline.bringToFront();
   polyline.bindPopup(() => buildStravaPopup(actStats));
   polyline.on('click', () => {
     polyline.setPopupContent(buildStravaPopup(actStats));
@@ -1163,6 +1165,7 @@ function startStravaObserver() {
       const pl = L.polyline(latlngsArr, {
         color: '#0437F2', weight: 4, opacity: 0.88, dashArray: '7 4', lineJoin: 'round',
       }).addTo(state.map);
+      pl.bringToFront();
       const name = data.name || 'Strava Activity';
       pl.bindPopup(buildStravaPopup({ name, distance: data.distance, elevation: data.elevation, movingTime: data.time, owner: data.owner }));
       pl.on('click', () => {
