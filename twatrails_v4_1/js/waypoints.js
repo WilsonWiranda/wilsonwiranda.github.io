@@ -124,12 +124,25 @@ const Waypoints = (() => {
 
     waypoints.forEach((wp, i) => {
       const marker = L.marker([wp.lat, wp.lon], { icon: makeIcon(ROUTE_ICON_HTML(color)) }).addTo(map);
-      marker.bindPopup(`
-        <div style="font-family:Syne,sans-serif;min-width:140px">
-          <b style="font-size:.88rem">${wp.name}</b><br/>
-          ${wp.note ? `<span style="font-size:.75rem;color:#aaa">${wp.note}</span>` : ''}
-        </div>
-      `);
+      marker.bindPopup(() => {
+        let title = wp.name.replace(/\s·\s/g, ' - ');
+        let sub = '';
+        if (wp.note) {
+          const parts = wp.note.split(' · ');
+          // parts: [region, elevation, place, date, distance?, gainloss?]
+          const region = parts[0] || '';
+          const elev   = parts[1] || '';
+          const date   = parts[3] || '';
+          const dist   = parts[4] || '';
+          const gl     = parts[5] || '';
+          title += ` - ${elev}`;
+          sub = [date, region, dist && gl ? `${dist} ${gl}` : dist || gl].filter(Boolean).join(' · ');
+        }
+        return `<div style="font-family:Syne,sans-serif;min-width:160px">
+          <b style="font-size:.88rem">${title}</b><br/>
+          ${sub ? `<span style="font-size:.75rem;color:#aaa">${sub}</span>` : ''}
+        </div>`;
+      });
       markers.push({ id:`route-${i}`, marker, type:'route', name:wp.name, note:wp.note, lat:wp.lat, lon:wp.lon });
     });
   }
